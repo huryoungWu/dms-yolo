@@ -1,6 +1,6 @@
 # 🚗 疲劳驾驶检测系统
 
-基于 MediaPipe + OpenCV + CNN 的实时疲劳驾驶检测系统，支持 Web 前端界面操作。
+实时疲劳驾驶检测系统，支持 Web 前端界面操作。
 
 ## 功能特点
 
@@ -8,10 +8,8 @@
 - **眼睛状态分析**：通过 EAR（眼睛纵横比）检测闭眼状态
 - **嘴巴状态分析**：通过 MAR（嘴巴纵横比）检测打哈欠
 - **头部姿态估计**：通过 PnP 算法估计俯仰角/偏航角/翻滚角，检测低头
-- **三种检测模式**：
+- **检测模式**：
   - 📏 规则模式：基于阈值判断
-  - 🧠 深度学习模式：基于 CNN 模型分类
-  - 🔀 混合模式：规则 + 深度学习结合
 - **Web 前端界面**：浏览器操作，实时视频流 + 数据面板 + 系统日志
 - **阈值可调**：前端实时调整 EAR/MAR/角度阈值和帧数
 - **疲劳警告**：检测到疲劳时红色闪烁警告
@@ -55,11 +53,6 @@
 pip install flask opencv-python mediapipe numpy scikit-learn
 ```
 
-如需使用深度学习模式，还需安装：
-```bash
-pip install tensorflow
-```
-
 ### 启动系统
 
 **方式一**：双击 `启动检测系统.bat`（Windows）
@@ -71,23 +64,11 @@ python start.py
 
 浏览器会自动打开 `http://localhost:5000`
 
-### 训练 CNN 模型
-
-```bash
-# 训练眼部模型
-python training/train_cnn.py --dataset_type eye --dataset_path <数据集路径>
-
-# 训练嘴部模型
-python training/train_cnn.py --dataset_type mouth --dataset_path <数据集路径>
-```
-
-训练好的模型放到 `models/trained/` 目录下。
 
 ## 技术栈
 
 - Python 3.8+
 - MediaPipe（人脸关键点检测）
-- OpenCV（图像处理）
 - TensorFlow/Keras（CNN 模型）
 - Flask（Web 服务）
 - NumPy / scikit-learn
