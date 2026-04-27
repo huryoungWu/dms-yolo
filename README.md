@@ -39,11 +39,21 @@
 │   ├── templates/index.html
 │   └── static/
 ├── tests/              # 测试用例
+├── dms-driver-monitoring-system/ # YOLOv8 训练与产物目录
+│   ├── dms_yolov8_runnable_lowmem.py
+│   └── workdir/final_model.pt
 ├── web_app.py          # Flask Web 服务
 ├── main.py             # 命令行入口
 ├── start.py            # 一键启动脚本
-└── 启动检测系统.bat     # Windows 双击启动
+├── 规则模式详解.md        # 规则模式说明
+└── 启动检测系统.bat      # Windows 双击启动
 ```
+
+ <div class="rule-title">规则模式阈值提醒
+                        <div class="rule-item" id="ruleEar">👁️ 闭眼：EAR < 0.20（连续48帧）</div>
+                        <div class="rule-item" id="ruleMar">👄 哈欠：MAR > 0.75（连续25帧）</div>
+                        <div class="rule-item" id="rulePitch">🧑 低头：|Pitch| > 25.0°（连续50帧）</div>
+                        <div class="rule-note">头部姿态由 PnP 算法估计 Pitch / Yaw / Roll</div>
 
 ## 快速开始
 
