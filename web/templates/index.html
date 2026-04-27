@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>疲劳驾驶检测系统</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 顶部标题栏 -->
+        <header class="header">
+            <h1>🚗 疲劳驾驶检测系统</h1>
+            <span class="subtitle">基于 MediaPipe + OpenCV 的实时检测</span>
+        </header>
+
+        <div class="main-layout">
+            <!-- 左侧：视频流 -->
+            <div class="video-panel">
+                <div class="video-container" id="videoContainer">
+                    <img id="videoFeed" src="" alt="视频流">
+                    <div class="video-placeholder" id="placeholder">
+                        <div class="placeholder-icon">📷</div>
+                        <p>点击「开始检测」启动摄像头</p>
+                    </div>
+                    <!-- 疲劳警告覆盖层 -->
+                    <div class="fatigue-overlay" id="fatigueOverlay">
+                        <div class="fatigue-warning">
+                            <span class="warning-icon">⚠️</span>
+                            <span>疲劳驾驶！请休息！</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 控制按钮 -->
+                <div class="controls">
+                    <button class="btn btn-start" id="btnStart" onclick="startDetection()">▶ 开始检测</button>
+                    <button class="btn btn-stop" id="btnStop" onclick="stopDetection()" disabled>⏹ 停止检测</button>
+                </div>
+                <!-- 模式切换按钮 -->
+                <div class="mode-buttons">
+                    <button class="btn btn-mode active" id="modeRule" onclick="switchMode('rule')">📏 规则模式</button>
+                    <button class="btn btn-mode" id="modeDl" onclick="switchMode('dl')">🧠 深度学习模式</button>
+                    <button class="btn btn-mode" id="modeHybrid" onclick="switchMode('hybrid')">🔀 混合模式</button>
+                </div>
+            </div>
+
+            <!-- 右侧：数据面板 -->
+            <div class="data-panel">
+                <!-- 状态卡片 -->
+                <div class="card status-card" id="statusCard">
+                    <div class="card-header">当前状态</div>
+                    <div class="status-display" id="statusDisplay">待启动</div>
+                    <div class="status-detail" id="statusDetail"></div>
+                </div>
+
+                <!-- EAR 指标 -->
+                <div class="card metric-card">
+                    <div class="card-header">👁️ 眼睛 EAR</div>
+                    <div class="metric-value" id="earValue">0.00</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ear-fill" id="earBar"></div>
+                    </div>
+                    <div class="metric-info">
+                        <span>阈值: <span id="earThreshold">0.20</span></span>
+                        <span>帧计数: <span id="eyeFrameCount">0</span></span>
+                    </div>
+                </div>
+
+                <!-- MAR 指标 -->
+                <div class="card metric-card">
+                    <div class="card-header">👄 嘴巴 MAR</div>
+                    <div class="metric-value" id="marValue">0.00</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill mar-fill" id="marBar"></div>
+                    </div>
+                    <div class="metric-info">
+                        <span>阈值: <span id="marThreshold">0.75</span></span>
+                        <span>帧计数: <span id="mouthFrameCount">0</span></span>
+                    </div>
+                </div>
+
+                <!-- 头部姿态 -->
+                <div class="card metric-card">
+                    <div class="card-header">🧑 头部姿态</div>
+                    <div class="pose-grid">
+                        <div class="pose-item">
+                            <span class="pose-label">俯仰角</span>
+                            <span class="pose-value" id="pitchValue">0.0°</span>
+                        </div>
+                        <div class="pose-item">
+                            <span class="pose-label">偏航角</span>
+                            <span class="pose-value" id="yawValue">0.0°</span>
+                        </div>
+                        <div class="pose-item">
+                            <span class="pose-label">翻滚角</span>
+                            <span class="pose-value" id="rollValue">0.0°</span>
+                        </div>
+                    </div>
+                    <div class="metric-info">
+                        <span>阈值: <span id="pitchThreshold">25.0</span>°</span>
+                        <span>帧计数: <span id="headFrameCount">0</span></span>
+                    </div>
+                </div>
+
+                <!-- 阈值设置 -->
+                <div class="card settings-card">
+                    <div class="card-header">⚙️ 阈值设置</div>
+                    <div class="setting-row">
+                        <label>EAR 阈值</label>
+                        <input type="number" id="cfgEar" value="0.2" step="0.01" min="0.05" max="0.5">
+                    </div>
+                    <div class="setting-row">
+                        <label>MAR 阈值</label>
+                        <input type="number" id="cfgMar" value="0.75" step="0.05" min="0.3" max="1.5">
+                    </div>
+                    <div class="setting-row">
+                        <label>俯仰角阈值</label>
+                        <input type="number" id="cfgPitch" value="25" step="1" min="10" max="45">
+                    </div>
+                    <div class="setting-row">
+                        <label>闭眼帧数</label>
+                        <input type="number" id="cfgEyeFrames" value="48" step="1" min="10" max="100">
+                    </div>
+                    <div class="setting-row">
+                        <label>哈欠帧数</label>
+                        <input type="number" id="cfgMouthFrames" value="25" step="1" min="5" max="60">
+                    </div>
+                    <div class="setting-row">
+                        <label>低头帧数</label>
+                        <input type="number" id="cfgHeadFrames" value="50" step="1" min="10" max="100">
+                    </div>
+                    <button class="btn btn-apply" onclick="applyConfig()">应用设置</button>
+                </div>
+
+                <!-- 系统日志 -->
+                <div class="card log-card">
+                    <div class="card-header">
+                        📋 系统日志
+                        <button class="btn-clear-log" onclick="clearLogDisplay()" title="清空显示">🗑️</button>
+                    </div>
+                    <div class="log-container" id="logContainer">
+                        <div class="log-empty">启动检测后将显示日志...</div>
+                    </div>
+                </div>
+
+                <!-- 脚本运行 -->
+                <div class="card script-card">
+                    <div class="card-header">🚀 工具箱</div>
+                    <button class="btn btn-script" onclick="runScript('test')">🧪 运行测试</button>
+                    <button class="btn btn-script" onclick="runScript('train_eye', promptDatasetPath('eye'))">🧠 训练眼部模型</button>
+                    <button class="btn btn-script" onclick="runScript('train_mouth', promptDatasetPath('mouth'))">🧠 训练嘴部模型</button>
+                    <div class="script-log-container" id="scriptLogContainer" style="display:none;">
+                        <div class="script-log-header">
+                            <span>运行日志</span>
+                            <button class="btn-close-log" onclick="closeLog()">✕</button>
+                        </div>
+                        <pre class="script-log" id="scriptLog"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

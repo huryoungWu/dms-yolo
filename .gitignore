@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 虚拟环境
+venv/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Kiro
+.kiro/
+
+# 测试缓存
+.pytest_cache/
+
+# 模型文件（太大）
+models/trained/*.h5
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 测试输出
+test_output.txt

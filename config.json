@@ -1,0 +1,16 @@
+{
+    "ear_threshold": 0.2,
+    "mar_threshold": 0.75,
+    "pitch_threshold": 25.0,
+    "eye_consec_frames": 48,
+    "mouth_consec_frames": 25,
+    "head_consec_frames": 50,
+    "calibration_info": {
+        "ear_accuracy": null,
+        "ear_recall": null,
+        "mar_accuracy": null,
+        "mar_recall": null,
+        "calibrated_at": null,
+        "dataset": null
+    }
+}

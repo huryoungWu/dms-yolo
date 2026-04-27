@@ -1,0 +1,220 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #0f1923;
+    color: #e0e6ed;
+    min-height: 100vh;
+}
+
+.app { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+.header {
+    display: flex; align-items: baseline; gap: 16px;
+    padding: 12px 0; border-bottom: 1px solid #1e2d3d; margin-bottom: 16px;
+}
+.header h1 { font-size: 22px; color: #4fc3f7; font-weight: 600; }
+.subtitle { font-size: 13px; color: #607d8b; }
+
+.main-layout { display: flex; gap: 16px; }
+
+/* 视频面板 */
+.video-panel { flex: 1; min-width: 0; }
+.video-container {
+    position: relative; background: #1a2332; border-radius: 8px;
+    overflow: hidden; aspect-ratio: 4/3;
+}
+.video-container img {
+    width: 100%; height: 100%; object-fit: cover; display: none;
+}
+.video-container img.active { display: block; }
+.video-placeholder {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: #546e7a;
+}
+.placeholder-icon { font-size: 64px; margin-bottom: 12px; }
+.video-placeholder p { font-size: 15px; }
+.video-placeholder.hidden { display: none; }
+
+/* 疲劳警告覆盖层 */
+.fatigue-overlay {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(183, 28, 28, 0.35); z-index: 10;
+}
+.fatigue-overlay.active { display: flex; }
+.fatigue-warning {
+    background: rgba(211, 47, 47, 0.95); color: #fff;
+    padding: 16px 32px; border-radius: 8px; font-size: 24px;
+    font-weight: 700; animation: pulse 1s ease-in-out infinite;
+    display: flex; align-items: center; gap: 10px;
+}
+@keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.85; }
+}
+
+/* 控制栏 */
+.controls {
+    display: flex; gap: 10px; margin-top: 12px; align-items: center;
+}
+.btn {
+    padding: 10px 20px; border: none; border-radius: 6px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-start { background: #2e7d32; color: #fff; }
+.btn-start:hover:not(:disabled) { background: #388e3c; }
+.btn-stop { background: #c62828; color: #fff; }
+.btn-stop:hover:not(:disabled) { background: #d32f2f; }
+.btn-apply { background: #1565c0; color: #fff; width: 100%; margin-top: 8px; }
+.btn-apply:hover { background: #1976d2; }
+
+select {
+    padding: 10px 14px; border-radius: 6px; border: 1px solid #37474f;
+    background: #1a2332; color: #e0e6ed; font-size: 14px; cursor: pointer;
+}
+
+/* 模式切换按钮组 */
+.mode-buttons {
+    display: flex; gap: 8px; margin-top: 10px;
+}
+.btn-mode {
+    flex: 1; padding: 10px 16px; border: 2px solid #37474f;
+    border-radius: 6px; background: #1a2332; color: #90a4ae;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all 0.2s; text-align: center;
+}
+.btn-mode:hover { border-color: #4fc3f7; color: #e0e6ed; }
+.btn-mode.active {
+    border-color: #4fc3f7; background: #1a3a4a; color: #4fc3f7;
+    box-shadow: 0 0 8px rgba(79, 195, 247, 0.2);
+}
+
+/* 数据面板 */
+.data-panel {
+    width: 320px; flex-shrink: 0;
+    display: flex; flex-direction: column; gap: 12px;
+    max-height: calc(100vh - 100px); overflow-y: auto;
+}
+.card {
+    background: #1a2332; border-radius: 8px; padding: 14px;
+    border: 1px solid #1e2d3d;
+}
+.card-header {
+    font-size: 13px; font-weight: 600; color: #78909c;
+    margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* 状态卡片 */
+.status-card { text-align: center; }
+.status-display {
+    font-size: 28px; font-weight: 700; padding: 8px 0;
+    color: #66bb6a; transition: color 0.3s;
+}
+.status-display.warning { color: #ffa726; }
+.status-display.danger { color: #ef5350; animation: blink 0.8s infinite; }
+@keyframes blink { 50% { opacity: 0.5; } }
+.status-detail { font-size: 12px; color: #78909c; }
+
+/* 指标卡片 */
+.metric-value {
+    font-size: 32px; font-weight: 700; color: #4fc3f7;
+    font-family: "Consolas", "Courier New", monospace;
+}
+.progress-bar {
+    height: 6px; background: #263238; border-radius: 3px;
+    margin: 8px 0; overflow: hidden;
+}
+.progress-fill {
+    height: 100%; border-radius: 3px; transition: width 0.2s, background 0.3s;
+}
+.ear-fill { background: #66bb6a; }
+.ear-fill.warning { background: #ffa726; }
+.ear-fill.danger { background: #ef5350; }
+.mar-fill { background: #66bb6a; }
+.mar-fill.warning { background: #ffa726; }
+.mar-fill.danger { background: #ef5350; }
+.metric-info {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: #607d8b;
+}
+
+/* 头部姿态 */
+.pose-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.pose-item { text-align: center; }
+.pose-label { display: block; font-size: 11px; color: #607d8b; }
+.pose-value {
+    display: block; font-size: 18px; font-weight: 600; color: #4fc3f7;
+    font-family: "Consolas", monospace;
+}
+
+/* 设置卡片 */
+.setting-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+}
+.setting-row label { font-size: 13px; color: #90a4ae; }
+.setting-row input {
+    width: 80px; padding: 6px 8px; border-radius: 4px;
+    border: 1px solid #37474f; background: #0f1923; color: #e0e6ed;
+    font-size: 13px; text-align: right;
+}
+
+/* 滚动条 */
+.data-panel::-webkit-scrollbar { width: 4px; }
+.data-panel::-webkit-scrollbar-track { background: transparent; }
+.data-panel::-webkit-scrollbar-thumb { background: #37474f; border-radius: 2px; }
+
+/* 系统日志卡片 */
+.log-card .card-header {
+    display: flex; justify-content: space-between; align-items: center;
+}
+.btn-clear-log {
+    background: none; border: none; cursor: pointer; font-size: 14px;
+    color: #607d8b; padding: 2px 4px; transition: color 0.2s;
+}
+.btn-clear-log:hover { color: #ef5350; }
+.log-container {
+    max-height: 220px; overflow-y: auto; font-size: 12px;
+    font-family: "Consolas", "Courier New", monospace;
+    background: #0d1117; border-radius: 4px; padding: 8px;
+}
+.log-container::-webkit-scrollbar { width: 4px; }
+.log-container::-webkit-scrollbar-track { background: transparent; }
+.log-container::-webkit-scrollbar-thumb { background: #37474f; border-radius: 2px; }
+.log-empty { color: #546e7a; text-align: center; padding: 16px 0; font-family: inherit; }
+.log-entry { padding: 2px 0; line-height: 1.5; border-bottom: 1px solid #1e2d3d; }
+.log-entry:last-child { border-bottom: none; }
+.log-time { color: #546e7a; margin-right: 6px; }
+.log-entry.info .log-msg { color: #66bb6a; }
+.log-entry.warning .log-msg { color: #ffa726; }
+.log-entry.danger .log-msg { color: #ef5350; font-weight: 600; }
+
+/* 脚本运行卡片 */
+.btn-script {
+    width: 100%; padding: 8px 14px; margin-bottom: 6px;
+    background: #263238; color: #b0bec5; border: 1px solid #37474f;
+    border-radius: 5px; font-size: 13px; cursor: pointer;
+    text-align: left; transition: all 0.2s;
+}
+.btn-script:hover { background: #37474f; color: #e0e6ed; }
+.script-log-container {
+    margin-top: 10px; border: 1px solid #37474f; border-radius: 6px;
+    overflow: hidden;
+}
+.script-log-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 10px; background: #263238; font-size: 12px; color: #78909c;
+}
+.btn-close-log {
+    background: none; border: none; color: #78909c; cursor: pointer;
+    font-size: 14px; padding: 2px 6px;
+}
+.btn-close-log:hover { color: #ef5350; }
+.script-log {
+    max-height: 200px; overflow-y: auto; padding: 8px 10px;
+    background: #0d1117; font-size: 11px; color: #8b949e;
+    font-family: "Consolas", "Courier New", monospace;
+    white-space: pre-wrap; word-break: break-all; margin: 0;
+}

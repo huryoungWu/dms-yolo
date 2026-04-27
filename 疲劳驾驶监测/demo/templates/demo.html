@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>疲劳驾驶检测 Demo</title>
+    <link rel="stylesheet" href="/static/demo.css">
+</head>
+<body>
+    <div class="demo-container">
+        <header>
+            <h1>🚗 疲劳驾驶检测系统 Demo</h1>
+            <p class="subtitle">实时检测闭眼和打哈欠状态</p>
+        </header>
+
+        <div class="content">
+            <div class="video-section">
+                <div class="video-box" id="videoBox">
+                    <img id="videoFeed" src="" alt="视频流">
+                    <div class="placeholder" id="placeholder">
+                        <div class="icon">📷</div>
+                        <p>点击下方按钮启动检测</p>
+                    </div>
+                    <div class="alert-overlay" id="alertOverlay">
+                        <div class="alert-box">⚠️ 疲劳驾驶警告</div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button class="btn btn-start" id="btnStart" onclick="start()">▶ 开始检测</button>
+                    <button class="btn btn-stop" id="btnStop" onclick="stop()" disabled>⏹ 停止</button>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <div class="status-box" id="statusBox">
+                    <div class="status-label">当前状态</div>
+                    <div class="status-value" id="statusValue">待启动</div>
+                </div>
+
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">👁️ 眼睛 EAR</div>
+                        <div class="metric-value" id="earValue">0.00</div>
+                        <div class="metric-bar">
+                            <div class="bar-fill" id="earBar"></div>
+                        </div>
+                        <div class="metric-hint">闭眼帧数: <span id="eyeFrames">0</span></div>
+                    </div>
+
+                    <div class="metric">
+                        <div class="metric-label">👄 嘴巴 MAR</div>
+                        <div class="metric-value" id="marValue">0.00</div>
+                        <div class="metric-bar">
+                            <div class="bar-fill" id="marBar"></div>
+                        </div>
+                        <div class="metric-hint">哈欠帧数: <span id="yawnFrames">0</span></div>
+                    </div>
+                </div>
+
+                <div class="tips">
+                    <h3>💡 体验提示</h3>
+                    <ul>
+                        <li>闭眼超过 1 秒触发疲劳警告</li>
+                        <li>张大嘴巴模拟打哈欠</li>
+                        <li>确保面部在摄像头范围内</li>
+                        <li>光线充足效果更好</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/demo.js"></script>
+</body>
+</html>
