@@ -71,6 +71,11 @@ async function applyConfig() {
     document.getElementById("earThreshold").textContent = config.ear_threshold.toFixed(2);
     document.getElementById("marThreshold").textContent = config.mar_threshold.toFixed(2);
     document.getElementById("pitchThreshold").textContent = config.pitch_threshold.toFixed(1);
+
+    // 同步规则说明卡片
+    document.getElementById("ruleEar").textContent = `👁️ 闭眼：EAR < ${config.ear_threshold.toFixed(2)}（连续${config.eye_consec_frames}帧）`;
+    document.getElementById("ruleMar").textContent = `👄 哈欠：MAR > ${config.mar_threshold.toFixed(2)}（连续${config.mouth_consec_frames}帧）`;
+    document.getElementById("rulePitch").textContent = `🧑 低头：|Pitch| > ${config.pitch_threshold.toFixed(1)}°（连续${config.head_consec_frames}帧）`;
 }
 
 // ---- 数据轮询 ----
@@ -100,6 +105,9 @@ async function fetchData() {
 // ---- UI 更新 ----
 
 function updateUI(d) {
+    const ruleEarEl = document.getElementById("ruleEar");
+    const ruleMarEl = document.getElementById("ruleMar");
+    const rulePitchEl = document.getElementById("rulePitch");
     // EAR
     const earEl = document.getElementById("earValue");
     earEl.textContent = d.ear.toFixed(2);
@@ -124,6 +132,16 @@ function updateUI(d) {
     document.getElementById("rollValue").textContent = d.roll.toFixed(1) + "°";
     document.getElementById("headFrameCount").textContent = d.head_frame_count;
 
+    // 规则阈值高亮（仅规则模式）
+    ruleEarEl.classList.remove("active");
+    ruleMarEl.classList.remove("active");
+    rulePitchEl.classList.remove("active");
+    if (d.mode === "rule") {
+        if (d.eye_closed) ruleEarEl.classList.add("active");
+        if (d.is_yawning) ruleMarEl.classList.add("active");
+        if (d.is_head_down) rulePitchEl.classList.add("active");
+    }
+
     // 状态
     const statusEl = document.getElementById("statusDisplay");
     statusEl.textContent = d.status;
@@ -144,10 +162,28 @@ function updateUI(d) {
 
     // 状态详情
     const detailEl = document.getElementById("statusDetail");
+    const earThreshold = parseFloat(document.getElementById("earThreshold").textContent) || 0.20;
+    const marThreshold = parseFloat(document.getElementById("marThreshold").textContent) || 0.75;
+    const pitchThreshold = parseFloat(document.getElementById("pitchThreshold").textContent) || 25.0;
+
     if (d.is_dms_alert && Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
         detailEl.textContent = "DMS告警: " + d.dms_alerts.join("；");
     } else if (Array.isArray(d.dms_alerts)) {
         detailEl.textContent = "未触发DMS预警，系统持续检测中";
+    } else if (d.mode === "rule" && d.face_detected && (d.eye_closed || d.is_yawning || d.is_head_down)) {
+        const reasons = [];
+        if (d.eye_closed) {
+            reasons.push(`闭眼: EAR=${d.ear.toFixed(2)} < ${earThreshold.toFixed(2)}`);
+        }
+        if (d.is_yawning) {
+            reasons.push(`哈欠: MAR=${d.mar.toFixed(2)} > ${marThreshold.toFixed(2)}`);
+        }
+        if (d.is_head_down) {
+            reasons.push(`低头: |Pitch|=${Math.abs(d.pitch).toFixed(1)}° > ${pitchThreshold.toFixed(1)}°`);
+        }
+        detailEl.textContent = "规则阈值触发: " + reasons.join("；");
+    } else if (d.mode === "rule" && d.face_detected) {
+        detailEl.textContent = `规则阈值: EAR < ${earThreshold.toFixed(2)}，MAR > ${marThreshold.toFixed(2)}，|Pitch| > ${pitchThreshold.toFixed(1)}°`;
     } else if (d.is_fatigued && d.reasons.length > 0) {
         detailEl.textContent = "触发原因: " + d.reasons.join(", ");
     } else if (!d.face_detected) {
@@ -179,12 +215,32 @@ function resetUI() {
     document.getElementById("statusDisplay").textContent = "待启动";
     document.getElementById("statusDisplay").className = "status-display";
     document.getElementById("statusDetail").textContent = "";
+    document.getElementById("ruleEar").classList.remove("active");
+    document.getElementById("ruleMar").classList.remove("active");
+    document.getElementById("rulePitch").classList.remove("active");
 }
 
 // ---- 系统日志 ----
 
 let logSince = 0;
 let logPollingTimer = null;
+
+function updateCriticalLog(level, message) {
+    if (level !== "warning" && level !== "danger") return;
+    const id = level === "danger" ? "criticalDanger" : "criticalWarning";
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.textContent = message;
+    target.classList.add("flash");
+    setTimeout(() => target.classList.remove("flash"), 600);
+}
+
+function resetCriticalLogPanel() {
+    const warningEl = document.getElementById("criticalWarning");
+    const dangerEl = document.getElementById("criticalDanger");
+    if (warningEl) warningEl.textContent = "暂无黄色预警";
+    if (dangerEl) dangerEl.textContent = "暂无红色预警";
+}
 
 function startLogPoll() {
     stopLogPoll();
@@ -213,6 +269,7 @@ async function fetchLogs() {
                 div.className = `log-entry ${log.level}`;
                 div.innerHTML = `<span class="log-time">${log.time}</span><span class="log-msg">${log.message}</span>`;
                 container.appendChild(div);
+                updateCriticalLog(log.level, `[${log.time}] ${log.message}`);
             });
             logSince = data.total;
             container.scrollTop = container.scrollHeight;
@@ -224,6 +281,7 @@ function clearLogDisplay() {
     const container = document.getElementById("logContainer");
     container.innerHTML = '<div class="log-empty">日志已清空</div>';
     logSince = 0;
+    resetCriticalLogPanel();
 }
 
 // ---- 脚本运行 ----

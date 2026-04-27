@@ -117,6 +117,73 @@ select {
 @keyframes blink { 50% { opacity: 0.5; } }
 .status-detail { font-size: 12px; color: #78909c; }
 
+.rule-hints {
+    margin-top: 10px;
+    text-align: left;
+    background: #111a25;
+    border: 1px solid #223246;
+    border-radius: 6px;
+    padding: 8px;
+}
+.rule-title {
+    font-size: 11px;
+    color: #90a4ae;
+    margin-bottom: 6px;
+}
+.rule-item {
+    font-size: 12px;
+    color: #b0bec5;
+    line-height: 1.45;
+    margin-bottom: 4px;
+}
+.rule-item.active {
+    color: #ef5350;
+    font-weight: 700;
+}
+.rule-note {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #607d8b;
+}
+
+.critical-log-panel {
+    margin-top: 10px;
+    text-align: left;
+    background: #111a25;
+    border: 1px solid #3a2a2a;
+    border-radius: 6px;
+    padding: 8px;
+}
+.critical-log-title {
+    font-size: 11px;
+    color: #cfd8dc;
+    margin-bottom: 6px;
+}
+.critical-log-item {
+    font-size: 12px;
+    line-height: 1.45;
+    margin-bottom: 4px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: #0d1117;
+}
+.critical-log-item.warning {
+    color: #ffb74d;
+    border-left: 3px solid #ffa726;
+}
+.critical-log-item.danger {
+    color: #ef9a9a;
+    border-left: 3px solid #ef5350;
+}
+.critical-log-item.flash {
+    animation: criticalFlash 0.6s ease;
+}
+@keyframes criticalFlash {
+    0% { box-shadow: 0 0 0 rgba(239, 83, 80, 0); }
+    50% { box-shadow: 0 0 12px rgba(239, 83, 80, 0.45); }
+    100% { box-shadow: 0 0 0 rgba(239, 83, 80, 0); }
+}
+
 /* 指标卡片 */
 .metric-value {
     font-size: 32px; font-weight: 700; color: #4fc3f7;

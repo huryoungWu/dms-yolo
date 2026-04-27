@@ -51,6 +51,18 @@
                     <div class="card-header">当前状态</div>
                     <div class="status-display" id="statusDisplay">待启动</div>
                     <div class="status-detail" id="statusDetail"></div>
+                    <div class="rule-hints" id="ruleHints">
+                        <div class="rule-title">规则模式阈值提醒</div>
+                        <div class="rule-item" id="ruleEar">👁️ 闭眼：EAR < 0.20（连续48帧）</div>
+                        <div class="rule-item" id="ruleMar">👄 哈欠：MAR > 0.75（连续25帧）</div>
+                        <div class="rule-item" id="rulePitch">🧑 低头：|Pitch| > 25.0°（连续50帧）</div>
+                        <div class="rule-note">头部姿态由 PnP 算法估计 Pitch / Yaw / Roll</div>
+                    </div>
+                    <div class="critical-log-panel" id="criticalLogPanel">
+                        <div class="critical-log-title">⚠️ 重要日志提醒</div>
+                        <div class="critical-log-item warning" id="criticalWarning">暂无黄色预警</div>
+                        <div class="critical-log-item danger" id="criticalDanger">暂无红色预警</div>
+                    </div>
                 </div>
 
                 <!-- EAR 指标 -->
