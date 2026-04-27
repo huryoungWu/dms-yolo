@@ -117,3 +117,23 @@ DMS主要预警功能：
 左顾右盼预警：检测到驾驶员视线偏移超过1.0秒，触发报警
 遮挡镜头预警：通过画面检测功能发现一定范围内的黑屏，触发报警
 驾驶座无人预警：检测到驾驶座位上没有驾驶员时触发报警
+
+
+当前代码里 DMS 的具体阈值定义在 [`self._dms_thresholds`](web_app.py:67)：
+
+- 闭眼 1 级：`0.8s`（[`eye_l1`](web_app.py:69)）
+- 闭眼 2 级：`2.0s`（[`eye_l2`](web_app.py:70)）
+- 低头：`1.0s`（[`head_down`](web_app.py:71)）
+- 哈欠：`0.8s`（[`yawn`](web_app.py:72)）
+- 左顾右盼：`1.0s`（[`look_away`](web_app.py:73)）
+- 打电话：`0.3s`（[`phone`](web_app.py:74)）
+- 抽烟：`0.3s`（[`smoke`](web_app.py:75)）
+- 驾驶座无人：`1.0s`（[`no_driver`](web_app.py:76)）
+- 遮挡镜头：`0.6s`（[`occlusion`](web_app.py:77)）
+- 视线偏移角度（yaw 绝对值）：`25.0°`（[`yaw_abs`](web_app.py:78)）
+
+遮挡镜头的画面统计阈值在 [`self._occlusion_cfg`](web_app.py:80)：
+- 灰度均值 ≤ `35.0`（[`dark_mean`](web_app.py:81)）
+- 灰度标准差 ≤ `12.0`（[`low_var_std`](web_app.py:82)）
+
+这些阈值最终在 [`_build_dms_alerts()`](web_app.py:169) 中通过 [`_elapsed()`](web_app.py:162) 的持续时长比较触发告警。
