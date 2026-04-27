@@ -51,6 +51,8 @@ class WebDetectionSystem:
             "status": "正常", "is_fatigued": False,
             "reasons": [], "mode": "rule",
             "face_detected": False,
+            "is_dms_alert": False,
+            "dms_alerts": [],
         }
         self.mode = "rule"
         self._logs = []
@@ -62,6 +64,36 @@ class WebDetectionSystem:
         self._yolo_model_path = os.path.join(
             "dms-driver-monitoring-system", "workdir", "final_model.pt"
         )
+
+        # DMS 告警阈值（秒）
+        self._dms_thresholds = {
+            "eye_l1": 0.8,
+            "eye_l2": 2.0,
+            "head_down": 1.0,
+            "yawn": 0.8,
+            "look_away": 1.0,
+            "phone": 0.3,
+            "smoke": 0.3,
+            "no_driver": 1.0,
+            "occlusion": 0.6,
+            "yaw_abs": 25.0,
+        }
+        self._occlusion_cfg = {
+            "dark_mean": 35.0,
+            "low_var_std": 12.0,
+        }
+        self._dms_state = {
+            "eye_closed_since": None,
+            "head_down_since": None,
+            "yawn_since": None,
+            "look_away_since": None,
+            "phone_since": None,
+            "smoke_since": None,
+            "no_driver_since": None,
+            "occlusion_since": None,
+            "last_alert_signature": "",
+        }
+
         self._prev_state = {"eye_closed": False, "is_yawning": False, "is_head_down": False, "is_fatigued": False, "face_detected": True}
         self._init_modules(_DEFAULTS)
 
@@ -114,6 +146,104 @@ class WebDetectionSystem:
         self._yolo_enabled = False
         self._add_log("info", "YOLOv8 已禁用")
         return True, "YOLOv8 已禁用"
+
+    @staticmethod
+    def _class_present(label_set, *candidates):
+        return any(c in label_set for c in candidates)
+
+    def _update_timer(self, key: str, active: bool, now_ts: float):
+        since_key = f"{key}_since"
+        if active:
+            if self._dms_state[since_key] is None:
+                self._dms_state[since_key] = now_ts
+        else:
+            self._dms_state[since_key] = None
+
+    def _elapsed(self, key: str, now_ts: float) -> float:
+        since_key = f"{key}_since"
+        since = self._dms_state.get(since_key)
+        if since is None:
+            return 0.0
+        return max(0.0, now_ts - since)
+
+    def _build_dms_alerts(self, yolo_labels, eye_result, mouth_result, pose_result, frame=None):
+        """按业务规则生成 DMS 预警信息。"""
+        now_ts = time.time()
+        label_set = {str(x).strip().lower() for x in yolo_labels}
+
+        # 适配当前模型类别: open eye / closed eye / cigarette / phone / seatbelt
+        phone_on = self._class_present(label_set, "phone")
+        smoke_on = self._class_present(label_set, "cigarette")
+        closed_eye_on = eye_result.is_closed or self._class_present(label_set, "closed eye", "closed_eye")
+        open_eye_on = self._class_present(label_set, "open eye", "open_eye")
+        seatbelt_on = self._class_present(label_set, "seatbelt", "seat belt")
+
+        # 低头/哈欠由现有分析器保证，YOLO 有对应类时可叠加
+        yawn_on = mouth_result.is_yawning or self._class_present(label_set, "yawn", "yawning")
+        head_down_on = pose_result.is_head_down or self._class_present(label_set, "head down", "head_down")
+
+        # 左顾右盼: 优先 YOLO 类；若无则用 yaw 近似
+        look_away_on = self._class_present(label_set, "look away", "looking_away", "distracted")
+        if not look_away_on:
+            look_away_on = abs(float(getattr(pose_result, "yaw", 0.0))) >= self._dms_thresholds["yaw_abs"]
+
+        # 驾驶座无人: 当前模型无该类，使用“既无开眼/闭眼也无安全带”作为保守近似
+        no_driver_on = self._class_present(label_set, "no driver", "no_driver", "empty seat", "empty_seat")
+        if not no_driver_on:
+            no_driver_on = (not open_eye_on) and (not closed_eye_on) and (not seatbelt_on)
+
+        # 遮挡镜头: 若无YOLO类，使用黑屏统计近似
+        occlusion_on = self._class_present(label_set, "occlusion", "covered", "blocked", "black_screen")
+        if (not occlusion_on) and frame is not None:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            mean_v = float(np.mean(gray))
+            std_v = float(np.std(gray))
+            occlusion_on = (mean_v <= self._occlusion_cfg["dark_mean"]) and (std_v <= self._occlusion_cfg["low_var_std"])
+
+        self._update_timer("eye_closed", closed_eye_on, now_ts)
+        self._update_timer("head_down", head_down_on, now_ts)
+        self._update_timer("yawn", yawn_on, now_ts)
+        self._update_timer("look_away", look_away_on, now_ts)
+        self._update_timer("phone", phone_on, now_ts)
+        self._update_timer("smoke", smoke_on, now_ts)
+        self._update_timer("no_driver", no_driver_on, now_ts)
+        self._update_timer("occlusion", occlusion_on, now_ts)
+
+        alerts = []
+
+        eye_elapsed = self._elapsed("eye_closed", now_ts)
+        if eye_elapsed >= self._dms_thresholds["eye_l2"]:
+            alerts.append("闭眼2级预警（闭眼≥2.0秒）")
+        elif eye_elapsed >= self._dms_thresholds["eye_l1"]:
+            alerts.append("闭眼1级预警（闭眼≥0.8秒）")
+
+        if self._elapsed("head_down", now_ts) >= self._dms_thresholds["head_down"]:
+            alerts.append("低头预警（低头≥1.0秒）")
+
+        if self._elapsed("yawn", now_ts) >= self._dms_thresholds["yawn"]:
+            alerts.append("打哈欠预警（打哈欠≥0.8秒）")
+
+        if self._elapsed("phone", now_ts) >= self._dms_thresholds["phone"]:
+            alerts.append("打电话预警")
+
+        if self._elapsed("smoke", now_ts) >= self._dms_thresholds["smoke"]:
+            alerts.append("抽烟预警")
+
+        if self._elapsed("look_away", now_ts) >= self._dms_thresholds["look_away"]:
+            alerts.append("左顾右盼预警（视线偏移≥1.0秒）")
+
+        if self._elapsed("occlusion", now_ts) >= self._dms_thresholds["occlusion"]:
+            alerts.append("遮挡镜头预警")
+
+        if self._elapsed("no_driver", now_ts) >= self._dms_thresholds["no_driver"]:
+            alerts.append("驾驶座无人预警")
+
+        signature = "|".join(alerts)
+        if signature and signature != self._dms_state.get("last_alert_signature", ""):
+            self._add_log("warning", f"DMS预警: {'; '.join(alerts)}")
+        self._dms_state["last_alert_signature"] = signature
+
+        return alerts
 
     def start(self):
         """启动摄像头和处理线程。"""
@@ -200,6 +330,8 @@ class WebDetectionSystem:
                         "eye_frame_count": eye_result.frame_count,
                         "mouth_frame_count": mouth_result.frame_count,
                         "head_frame_count": pose_result.frame_count,
+                        "is_dms_alert": False,
+                        "dms_alerts": [],
                     }
             else:
                 eye_result = EyeResult(ear=0.0, is_closed=False, is_fatigued=False, frame_count=0)
@@ -223,18 +355,42 @@ class WebDetectionSystem:
                         "is_head_down": False,
                         "eye_frame_count": 0, "mouth_frame_count": 0,
                         "head_frame_count": 0,
+                        "is_dms_alert": False,
+                        "dms_alerts": [],
                     }
 
             if self._yolo_enabled:
                 try:
                     yolo_model = self._load_yolo_model()
                     yolo_results = yolo_model.predict(raw_frame, conf=0.35, verbose=False)
+                    yolo_labels = []
                     if yolo_results:
-                        rendered = yolo_results[0].plot()
+                        result0 = yolo_results[0]
+                        names_map = getattr(result0, "names", {}) or {}
+                        boxes = getattr(result0, "boxes", None)
+                        if boxes is not None and getattr(boxes, "cls", None) is not None:
+                            for cls_id in boxes.cls.tolist():
+                                cls_name = names_map.get(int(cls_id), str(int(cls_id)))
+                                yolo_labels.append(str(cls_name))
+                        rendered = result0.plot()
+
+                    dms_alerts = self._build_dms_alerts(
+                        yolo_labels, eye_result, mouth_result, pose_result, frame=raw_frame
+                    )
+                    with self._lock:
+                        self._latest_data["dms_alerts"] = dms_alerts
+                        self._latest_data["is_dms_alert"] = len(dms_alerts) > 0
                 except Exception as e:
                     self._yolo_enabled = False
                     self._last_yolo_error = str(e)
                     self._add_log("danger", f"YOLO 推理失败，已自动禁用: {e}")
+                    with self._lock:
+                        self._latest_data["dms_alerts"] = []
+                        self._latest_data["is_dms_alert"] = False
+            else:
+                with self._lock:
+                    self._latest_data["dms_alerts"] = []
+                    self._latest_data["is_dms_alert"] = False
 
             _, jpeg = cv2.imencode(".jpg", rendered, [cv2.IMWRITE_JPEG_QUALITY, 80])
             with self._lock:

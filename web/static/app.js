@@ -128,7 +128,14 @@ function updateUI(d) {
     const statusEl = document.getElementById("statusDisplay");
     statusEl.textContent = d.status;
     statusEl.className = "status-display";
-    if (d.is_fatigued) {
+
+    if (d.is_dms_alert && Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
+        statusEl.classList.add("danger");
+        statusEl.textContent = "⚠️ DMS预警";
+    } else if (Array.isArray(d.dms_alerts)) {
+        statusEl.classList.add("warning");
+        statusEl.textContent = "🟢 YOLO-DMS监测中";
+    } else if (d.is_fatigued) {
         statusEl.classList.add("danger");
         statusEl.textContent = "⚠️ 疲劳驾驶";
     } else if (d.eye_closed || d.is_yawning || d.is_head_down) {
@@ -137,7 +144,11 @@ function updateUI(d) {
 
     // 状态详情
     const detailEl = document.getElementById("statusDetail");
-    if (d.is_fatigued && d.reasons.length > 0) {
+    if (d.is_dms_alert && Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
+        detailEl.textContent = "DMS告警: " + d.dms_alerts.join("；");
+    } else if (Array.isArray(d.dms_alerts)) {
+        detailEl.textContent = "未触发DMS预警，系统持续检测中";
+    } else if (d.is_fatigued && d.reasons.length > 0) {
         detailEl.textContent = "触发原因: " + d.reasons.join(", ");
     } else if (!d.face_detected) {
         detailEl.textContent = "请确保面部在摄像头范围内";
