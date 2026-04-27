@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import socket
 import threading
 import webbrowser
 
@@ -13,10 +14,25 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
-def open_browser():
+def is_port_available(port: int) -> bool:
+    """检查本机端口是否可用。"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
+
+def choose_port(preferred: int = 5000, max_tries: int = 20) -> int:
+    """选择可用端口，优先 preferred。"""
+    for port in range(preferred, preferred + max_tries):
+        if is_port_available(port):
+            return port
+    raise RuntimeError(f"未找到可用端口（尝试范围: {preferred}-{preferred + max_tries - 1}）")
+
+
+def open_browser(port: int):
     """延迟 1.5 秒后自动打开浏览器"""
     time.sleep(1.5)
-    webbrowser.open("http://localhost:5000")
+    webbrowser.open(f"http://localhost:{port}")
 
 
 def check_dependencies():
@@ -54,13 +70,16 @@ if __name__ == "__main__":
     # 检查依赖
     check_dependencies()
 
+    # 自动选择可用端口（优先 5000）
+    port = choose_port(5000)
+
     # 自动打开浏览器
-    threading.Thread(target=open_browser, daemon=True).start()
+    threading.Thread(target=open_browser, args=(port,), daemon=True).start()
 
     print("\n系统已启动！浏览器将自动打开...")
-    print("访问地址: http://localhost:5000")
+    print(f"访问地址: http://localhost:{port}")
     print("按 Ctrl+C 停止服务\n")
 
     # 启动 Flask
     from web_app import app
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

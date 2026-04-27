@@ -39,14 +39,21 @@ class FaceDetector:
         max_num_faces: int = 1,
         min_detection_confidence: float = 0.5,
     ):
-        """初始化 MediaPipe FaceMesh"""
-        self._face_mesh = mp.solutions.face_mesh.FaceMesh(
+        """初始化 MediaPipe FaceMesh。兼容不同 mediapipe 发行包结构。"""
+        try:
+            face_mesh_cls = mp.solutions.face_mesh.FaceMesh
+        except AttributeError:
+            # 某些发行包不在顶层暴露 mp.solutions，但仍可通过 python.solutions 使用
+            from mediapipe.python.solutions.face_mesh import FaceMesh as _FaceMesh
+
+            face_mesh_cls = _FaceMesh
+
+        self._face_mesh = face_mesh_cls(
             max_num_faces=max_num_faces,
             min_detection_confidence=min_detection_confidence,
             min_tracking_confidence=0.5,
             refine_landmarks=False,
         )
-
     def detect(self, frame: np.ndarray) -> Optional[FaceLandmarks]:
         """
         检测单帧图像中的人脸关键点。

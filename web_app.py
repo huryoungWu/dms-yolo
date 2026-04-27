@@ -7,6 +7,9 @@ import sys
 import threading
 import time
 
+# macOS: 避免 OpenCV 在非主线程触发相机授权弹窗导致初始化失败
+os.environ.setdefault("OPENCV_AVFOUNDATION_SKIP_AUTH", "1")
+
 import cv2
 import numpy as np
 from flask import Flask, Response, jsonify, render_template, request
@@ -52,6 +55,7 @@ class WebDetectionSystem:
         self.mode = "rule"
         self._logs = []
         self._log_lock = threading.Lock()
+        self._last_camera_error = ""
         self._prev_state = {"eye_closed": False, "is_yawning": False, "is_head_down": False, "is_fatigued": False, "face_detected": True}
         self._init_modules(_DEFAULTS)
 
@@ -76,10 +80,17 @@ class WebDetectionSystem:
         """启动摄像头和处理线程。"""
         if self._running:
             return True
+
+        self._last_camera_error = ""
         self._cap = cv2.VideoCapture(0)
         if not self._cap.isOpened():
-            self._add_log("danger", "无法打开摄像头")
+            self._last_camera_error = (
+                "无法打开摄像头。macOS 请检查：系统设置 -> 隐私与安全性 -> 相机，"
+                "允许当前终端/IDE（如 Terminal、iTerm、PyCharm、VS Code）。"
+            )
+            self._add_log("danger", self._last_camera_error)
             return False
+
         self._running = True
         self._add_log("info", "系统启动，摄像头已开启")
         mode_names = {"rule": "规则模式", "dl": "深度学习模式", "hybrid": "混合模式"}
@@ -274,7 +285,12 @@ def index():
 @app.route("/api/start", methods=["POST"])
 def api_start():
     ok = system.start()
-    return jsonify({"success": ok, "message": "摄像头启动成功" if ok else "无法打开摄像头"})
+    if ok:
+        return jsonify({"success": True, "message": "摄像头启动成功"})
+    return jsonify({
+        "success": False,
+        "message": system._last_camera_error or "无法打开摄像头",
+    })
 
 
 @app.route("/api/stop", methods=["POST"])
