@@ -11,7 +11,7 @@
         <!-- 顶部标题栏 -->
         <header class="header">
             <h1>🚗 疲劳驾驶检测系统</h1>
-            <span class="subtitle">基于 MediaPipe + OpenCV 的实时检测</span>
+            <span class="subtitle">基于规则模式和yolo的实时检测</span>
         </header>
 
         <div class="main-layout">
@@ -38,9 +38,7 @@
                 </div>
                 <!-- 模式切换按钮 -->
                 <div class="mode-buttons">
-                    <button class="btn btn-mode active" id="modeRule" onclick="switchMode('rule')">📏 规则模式</button>
-                    <button class="btn btn-mode" id="modeDl" onclick="switchMode('dl')">🧠 深度学习模式</button>
-                    <button class="btn btn-mode" id="modeHybrid" onclick="switchMode('hybrid')">🔀 混合模式</button>
+                    <button class="btn btn-mode active" id="modeRule" onclick="switchMode('rule')">规则模式</button>
                 </div>
             </div>
 
@@ -158,11 +156,9 @@
                 <!-- 脚本运行 -->
                 <div class="card script-card">
                     <div class="card-header">🚀 工具箱</div>
-                    <button class="btn btn-script" onclick="runScript('test')">🧪 运行测试</button>
-                    <button class="btn btn-script" onclick="runScript('train_eye', promptDatasetPath('eye'))">🧠 训练眼部模型</button>
-                    <button class="btn btn-script" onclick="runScript('train_mouth', promptDatasetPath('mouth'))">🧠 训练嘴部模型</button>
-                    <button class="btn btn-script" id="btnYoloOn" onclick="toggleYolo(true)">🟢 启用 YOLOv8 检测</button>
-                    <button class="btn btn-script" id="btnYoloOff" onclick="toggleYolo(false)">⚪️ 关闭 YOLOv8 检测</button>
+                    <button class="btn btn-script" onclick="runScript('test')">运行测试</button>
+                    <button class="btn btn-script" id="btnYoloOn" onclick="toggleYolo(true)">启用 YOLOv8 检测</button>
+                    <button class="btn btn-script" id="btnYoloOff" onclick="toggleYolo(false)">关闭 YOLOv8 检测</button>
                     <div class="script-log-container" id="scriptLogContainer" style="display:none;">
                         <div class="script-log-header">
                             <span>运行日志</span>
