@@ -91,3 +91,7 @@ python training/train_cnn.py --dataset_type mouth --dataset_path <数据集路�
 - TensorFlow/Keras（CNN 模型）
 - Flask（Web 服务）
 - NumPy / scikit-learn
+
+最终yolo8训练好的pt文件存放在
+/dms-driver-monitoring-system/workdir目录下
+现在需求是

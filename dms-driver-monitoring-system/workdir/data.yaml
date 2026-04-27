@@ -1,0 +1,10 @@
+train: D:\dev\python\machineWork2\dms-driver-monitoring-system\train\images
+val: D:\dev\python\machineWork2\dms-driver-monitoring-system\valid\images
+test: D:\dev\python\machineWork2\dms-driver-monitoring-system\test\images
+nc: 5
+names:
+- Open Eye
+- Closed Eye
+- Cigarette
+- Phone
+- Seatbelt
