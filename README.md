@@ -82,6 +82,27 @@ python start.py
 - TensorFlow/Keras（CNN 模型）
 - Flask（Web 服务）
 - NumPy / scikit-learn
+
+## MediaPipe 人脸检测原理
+
+本项目使用 MediaPipe Face Mesh 做实时人脸关键点检测，整体是“检测 + 关键点回归 + 时序跟踪”的流水线：
+
+1. **人脸区域检测（Detector）**
+   在首帧或跟踪失败时，先定位人脸区域（ROI）。
+
+2. **关键点回归（Landmark）**
+   在 ROI 上回归人脸网格关键点坐标。当前代码配置为 `refine_landmarks=False`，对应常规 Face Mesh 点集（通常为 468 点）。
+
+3. **时序跟踪（Tracking）**
+   在视频连续帧中优先复用上一帧 ROI，减少重复检测，提升实时性与稳定性。
+
+在本项目代码中，主要流程对应如下：
+
+- 初始化 Face Mesh：`detectors/face_detector.py` 中 `FaceDetector.__init__()`
+- 单帧推理：`detectors/face_detector.py` 中 `detect()` 调用 `self._face_mesh.process(...)`
+- 坐标转换：将归一化坐标转换为像素坐标
+- 业务关键点提取：按眼睛/嘴巴/头姿索引提取后供 EAR、MAR、PnP 姿态估计使用
+
 DMS系统是驾驶疲劳检测系统（Driver Monitor System），主要功能包括：疲劳检测、分心
 检测、表情识别、危险动作识别、视线追踪等
 最终yolo8训练好的pt文件存放在
