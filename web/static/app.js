@@ -271,6 +271,20 @@ function stopLogPolling() {
     }
 }
 
+async function toggleYolo(enabled) {
+    try {
+        const res = await fetch("/api/yolo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled }),
+        });
+        const data = await res.json();
+        alert(data.message || (data.success ? "操作成功" : "操作失败"));
+    } catch (e) {
+        alert("YOLO 切换失败，请检查后端日志");
+    }
+}
+
 function closeLog() {
     stopLogPolling();
     document.getElementById("scriptLogContainer").style.display = "none";

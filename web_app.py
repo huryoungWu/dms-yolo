@@ -56,6 +56,12 @@ class WebDetectionSystem:
         self._logs = []
         self._log_lock = threading.Lock()
         self._last_camera_error = ""
+        self._last_yolo_error = ""
+        self._yolo_model = None
+        self._yolo_enabled = False
+        self._yolo_model_path = os.path.join(
+            "dms-driver-monitoring-system", "workdir", "final_model.pt"
+        )
         self._prev_state = {"eye_closed": False, "is_yawning": False, "is_head_down": False, "is_fatigued": False, "face_detected": True}
         self._init_modules(_DEFAULTS)
 
@@ -75,6 +81,39 @@ class WebDetectionSystem:
         )
         self.fatigue_evaluator = FatigueEvaluator()
         self.renderer = DisplayRenderer()
+
+    def _load_yolo_model(self):
+        """懒加载 YOLOv8 模型。"""
+        if self._yolo_model is not None:
+            return self._yolo_model
+
+        model_path = self._yolo_model_path
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"YOLO 模型不存在: {model_path}")
+
+        from ultralytics import YOLO
+
+        self._yolo_model = YOLO(model_path)
+        return self._yolo_model
+
+    def set_yolo_enabled(self, enabled: bool):
+        """启用/禁用 YOLOv8 叠加检测。"""
+        if enabled:
+            try:
+                self._load_yolo_model()
+                self._yolo_enabled = True
+                self._last_yolo_error = ""
+                self._add_log("info", f"YOLOv8 已启用: {self._yolo_model_path}")
+                return True, "YOLOv8 已启用"
+            except Exception as e:
+                self._yolo_enabled = False
+                self._last_yolo_error = str(e)
+                self._add_log("danger", f"YOLOv8 启用失败: {e}")
+                return False, f"YOLOv8 启用失败: {e}"
+
+        self._yolo_enabled = False
+        self._add_log("info", "YOLOv8 已禁用")
+        return True, "YOLOv8 已禁用"
 
     def start(self):
         """启动摄像头和处理线程。"""
@@ -124,6 +163,7 @@ class WebDetectionSystem:
             if not ret:
                 continue
 
+            raw_frame = frame.copy()
             landmarks = self.face_detector.detect(frame)
 
             if landmarks is not None:
@@ -184,6 +224,17 @@ class WebDetectionSystem:
                         "eye_frame_count": 0, "mouth_frame_count": 0,
                         "head_frame_count": 0,
                     }
+
+            if self._yolo_enabled:
+                try:
+                    yolo_model = self._load_yolo_model()
+                    yolo_results = yolo_model.predict(raw_frame, conf=0.35, verbose=False)
+                    if yolo_results:
+                        rendered = yolo_results[0].plot()
+                except Exception as e:
+                    self._yolo_enabled = False
+                    self._last_yolo_error = str(e)
+                    self._add_log("danger", f"YOLO 推理失败，已自动禁用: {e}")
 
             _, jpeg = cv2.imencode(".jpg", rendered, [cv2.IMWRITE_JPEG_QUALITY, 80])
             with self._lock:
@@ -326,6 +377,14 @@ def api_logs():
     since = request.args.get("since", 0, type=int)
     logs, total = system.get_logs(since)
     return jsonify({"logs": logs, "total": total})
+
+
+@app.route("/api/yolo", methods=["POST"])
+def api_yolo_toggle():
+    data = request.get_json(force=True)
+    enabled = bool(data.get("enabled", False))
+    ok, message = system.set_yolo_enabled(enabled)
+    return jsonify({"success": ok, "enabled": system._yolo_enabled, "message": message})
 
 
 @app.route("/video_feed")

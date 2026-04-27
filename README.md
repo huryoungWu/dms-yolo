@@ -91,7 +91,8 @@ python training/train_cnn.py --dataset_type mouth --dataset_path <数据集路�
 - TensorFlow/Keras（CNN 模型）
 - Flask（Web 服务）
 - NumPy / scikit-learn
-
+DMS系统是驾驶疲劳检测系统（Driver Monitor System），主要功能包括：疲劳检测、分心
+检测、表情识别、危险动作识别、视线追踪等
 最终yolo8训练好的pt文件存放在
 /dms-driver-monitoring-system/workdir目录下
-现在需求是
+现在需求是扩展功能 在前端页面添加按钮，点击后可以加载yolo8模型进行检测，并在视频流中显示检测结果。
