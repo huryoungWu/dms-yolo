@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+import math
 
 # macOS: 避免 OpenCV 在非主线程触发相机授权弹窗导致初始化失败
 os.environ.setdefault("OPENCV_AVFOUNDATION_SKIP_AUTH", "1")
@@ -24,6 +25,10 @@ from models.data_models import EyeResult, MouthResult, PoseResult
 
 app = Flask(__name__, template_folder="web/templates", static_folder="web/static")
 
+PHONE_CENTER = (0.0, 0.0)
+CIGARETTE_CENTER = (0.0, 0.0)
+EYES_CENTER = (0.0, 0.0)
+MOUTH_CENTER = (0.0, 0.0)
 # 默认阈值
 _DEFAULTS = {
     "ear_threshold": 0.2,
@@ -72,11 +77,13 @@ class WebDetectionSystem:
             "head_down": 1.0,
             "yawn": 0.8,
             "look_away": 1.0,
-            "phone": 0.3,
-            "smoke": 0.3,
+            "phone": 0.5,       # 打电话持续时间
+            "smoke": 0.5,        # 抽烟持续时间
             "no_driver": 1.0,
             "occlusion": 0.6,
             "yaw_abs": 25.0,
+            "phone_eye_dist": 300.0,   # 手机-眼睛最大有效距离
+            "cig_mouth_dist": 100.0,   # 香烟-嘴巴最大有效距离
         }
         self._occlusion_cfg = {
             "dark_mean": 35.0,
@@ -150,6 +157,11 @@ class WebDetectionSystem:
     @staticmethod
     def _class_present(label_set, *candidates):
         return any(c in label_set for c in candidates)
+    
+    @staticmethod
+    def _calc_dist(p1, p2):
+        """计算两点欧几里得距离"""
+        return math.hypot(p1[0]-p2[0], p1[1]-p2[1])
 
     def _update_timer(self, key: str, active: bool, now_ts: float):
         since_key = f"{key}_since"
@@ -172,8 +184,8 @@ class WebDetectionSystem:
         label_set = {str(x).strip().lower() for x in yolo_labels}
 
         # 适配当前模型类别: open eye / closed eye / cigarette / phone / seatbelt
-        phone_on = self._class_present(label_set, "phone")
-        smoke_on = self._class_present(label_set, "cigarette")
+        phone_detected = self._class_present(label_set, "phone")
+        smoke_detected = self._class_present(label_set, "cigarette")
         closed_eye_on = eye_result.is_closed or self._class_present(label_set, "closed eye", "closed_eye")
         open_eye_on = self._class_present(label_set, "open eye", "open_eye")
         seatbelt_on = self._class_present(label_set, "seatbelt", "seat belt")
@@ -199,6 +211,24 @@ class WebDetectionSystem:
             mean_v = float(np.mean(gray))
             std_v = float(np.std(gray))
             occlusion_on = (mean_v <= self._occlusion_cfg["dark_mean"]) and (std_v <= self._occlusion_cfg["low_var_std"])
+
+        # ====================== 核心修改 ======================
+        # 打电话：检测到手机 + 手机与眼睛距离 < 阈值 + 人脸存在
+        phone_on = False
+        if phone_detected and EYES_CENTER != (0.0, 0.0) and PHONE_CENTER != (0.0, 0.0):
+            dist = self._calc_dist(PHONE_CENTER, EYES_CENTER)
+            print(f'phone_dist:{dist}')
+            if dist < self._dms_thresholds["phone_eye_dist"]:
+                phone_on = True
+
+        # 抽烟：检测到香烟 + 香烟与嘴巴距离 < 阈值 + 人脸存在
+        smoke_on = False
+        if smoke_detected and MOUTH_CENTER != (0.0, 0.0) and CIGARETTE_CENTER != (0.0, 0.0):
+            dist = self._calc_dist(CIGARETTE_CENTER, MOUTH_CENTER)
+            print(f'smoke_dist:{dist}')
+            if dist < self._dms_thresholds["cig_mouth_dist"]:
+                smoke_on = True
+        # ======================================================
 
         self._update_timer("eye_closed", closed_eye_on, now_ts)
         self._update_timer("head_down", head_down_on, now_ts)
@@ -295,7 +325,24 @@ class WebDetectionSystem:
 
             raw_frame = frame.copy()
             landmarks = self.face_detector.detect(frame)
-
+            # 计算眼睛中心点坐标
+            left_eye_center = (sum([p[0] for p in landmarks.left_eye]) / len(landmarks.left_eye), 
+                            sum([p[1] for p in landmarks.left_eye]) / len(landmarks.left_eye)) if landmarks and landmarks.left_eye else (0,0)
+            right_eye_center = (sum([p[0] for p in landmarks.right_eye]) / len(landmarks.right_eye), 
+                            sum([p[1] for p in landmarks.right_eye]) / len(landmarks.right_eye)) if landmarks and landmarks.right_eye else (0,0)
+            eyes_center = ((left_eye_center[0] + right_eye_center[0]) / 2, (left_eye_center[1] + right_eye_center[1]) / 2)
+            global EYES_CENTER
+            EYES_CENTER = eyes_center
+            
+            # 计算嘴巴中心点坐标
+            mouth_center = (0,0)
+            if landmarks and landmarks.mouth:
+                mouth_points = list(landmarks.mouth.values())
+                mouth_center = (sum([p[0] for p in mouth_points]) / len(mouth_points), 
+                            sum([p[1] for p in mouth_points]) / len(mouth_points))
+            global MOUTH_CENTER
+            MOUTH_CENTER = mouth_center
+            
             if landmarks is not None:
                 eye_result = self.eye_analyzer.analyze(landmarks.left_eye, landmarks.right_eye)
                 mouth_result = self.mouth_analyzer.analyze(landmarks.mouth)
@@ -364,15 +411,37 @@ class WebDetectionSystem:
                     yolo_model = self._load_yolo_model()
                     yolo_results = yolo_model.predict(raw_frame, conf=0.35, verbose=False)
                     yolo_labels = []
+                    
                     if yolo_results:
                         result0 = yolo_results[0]
                         names_map = getattr(result0, "names", {}) or {}
                         boxes = getattr(result0, "boxes", None)
+                        
                         if boxes is not None and getattr(boxes, "cls", None) is not None:
-                            for cls_id in boxes.cls.tolist():
+                            # 获取边界框坐标
+                            boxes_xyxy = boxes.xyxy.tolist()
+                            class_ids = boxes.cls.tolist()
+                            
+                            # 重置坐标
+                            global PHONE_CENTER, CIGARETTE_CENTER
+                            PHONE_CENTER = (0.0, 0.0)
+                            CIGARETTE_CENTER = (0.0, 0.0)
+                            
+                            for i, cls_id in enumerate(class_ids):
                                 cls_name = names_map.get(int(cls_id), str(int(cls_id)))
                                 yolo_labels.append(str(cls_name))
-                        rendered = result0.plot()
+                                
+                                # 计算中心点坐标
+                                box = boxes_xyxy[i]
+                                center_x = (box[0] + box[2]) / 2
+                                center_y = (box[1] + box[3]) / 2
+                                center_point = (int(center_x), int(center_y))
+                                
+                                if cls_name.lower() == 'phone':
+                                    PHONE_CENTER = center_point
+                                elif cls_name.lower() == 'cigarette':
+                                    CIGARETTE_CENTER = center_point
+                            rendered = result0.plot()
 
                     dms_alerts = self._build_dms_alerts(
                         yolo_labels, eye_result, mouth_result, pose_result, frame=raw_frame
