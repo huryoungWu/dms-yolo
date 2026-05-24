@@ -66,6 +66,7 @@ class WebDetectionSystem:
         self._last_yolo_error = ""
         self._yolo_model = None
         self._yolo_enabled = False
+        self._display_mode = "yolo"
         self._yolo_model_path = os.path.join(
             "dms-driver-monitoring-system", "workdir", "final_model.pt"
         )
@@ -153,6 +154,17 @@ class WebDetectionSystem:
         self._yolo_enabled = False
         self._add_log("info", "YOLOv8 已禁用")
         return True, "YOLOv8 已禁用"
+
+    def set_display_mode(self, mode: str):
+        allowed = {"yolo", "rule", "both"}
+        self._display_mode = mode if mode in allowed else "yolo"
+        display_names = {
+            "yolo": "YOLO显示",
+            "rule": "规则显示",
+            "both": "双模式显示",
+        }
+        self._add_log("info", f"切换到{display_names.get(self._display_mode, self._display_mode)}")
+        return self._display_mode
 
     @staticmethod
     def _class_present(label_set, *candidates):
@@ -324,6 +336,7 @@ class WebDetectionSystem:
                 continue
 
             raw_frame = frame.copy()
+            rule_rendered = frame.copy()
             landmarks = self.face_detector.detect(frame)
             # 计算眼睛中心点坐标
             left_eye_center = (sum([p[0] for p in landmarks.left_eye]) / len(landmarks.left_eye), 
@@ -355,8 +368,8 @@ class WebDetectionSystem:
                     dl_result=dl_result, mode=self.mode,
                 )
                 status_key = DisplayRenderer._determine_status(eye_result, mouth_result, pose_result)
-                rendered = self.renderer.render(
-                    frame, landmarks, eye_result, mouth_result,
+                rule_rendered = self.renderer.render(
+                    rule_rendered, landmarks, eye_result, mouth_result,
                     pose_result, fatigue_status, dl_result=dl_result,
                 )
                 with self._lock:
@@ -387,8 +400,8 @@ class WebDetectionSystem:
                 fatigue_status = self.fatigue_evaluator.evaluate(
                     eye_result, mouth_result, pose_result, mode=self.mode,
                 )
-                rendered = self.renderer.render(
-                    frame, None, eye_result, mouth_result,
+                rule_rendered = self.renderer.render(
+                    rule_rendered, None, eye_result, mouth_result,
                     pose_result, fatigue_status,
                 )
                 with self._lock:
@@ -406,12 +419,14 @@ class WebDetectionSystem:
                         "dms_alerts": [],
                     }
 
+            rendered = rule_rendered
+
             if self._yolo_enabled:
                 try:
                     yolo_model = self._load_yolo_model()
                     yolo_results = yolo_model.predict(raw_frame, conf=0.35, verbose=False)
                     yolo_labels = []
-                    
+                    yolo_rendered = raw_frame.copy()
                     if yolo_results:
                         result0 = yolo_results[0]
                         names_map = getattr(result0, "names", {}) or {}
@@ -430,18 +445,18 @@ class WebDetectionSystem:
                             for i, cls_id in enumerate(class_ids):
                                 cls_name = names_map.get(int(cls_id), str(int(cls_id)))
                                 yolo_labels.append(str(cls_name))
-                                
+
                                 # 计算中心点坐标
                                 box = boxes_xyxy[i]
                                 center_x = (box[0] + box[2]) / 2
                                 center_y = (box[1] + box[3]) / 2
                                 center_point = (int(center_x), int(center_y))
-                                
+
                                 if cls_name.lower() == 'phone':
                                     PHONE_CENTER = center_point
                                 elif cls_name.lower() == 'cigarette':
                                     CIGARETTE_CENTER = center_point
-                            rendered = result0.plot()
+                        yolo_rendered = result0.plot()
 
                     dms_alerts = self._build_dms_alerts(
                         yolo_labels, eye_result, mouth_result, pose_result, frame=raw_frame
@@ -449,6 +464,16 @@ class WebDetectionSystem:
                     with self._lock:
                         self._latest_data["dms_alerts"] = dms_alerts
                         self._latest_data["is_dms_alert"] = len(dms_alerts) > 0
+
+                    if self._display_mode == "rule":
+                        rendered = rule_rendered
+                    elif self._display_mode == "both":
+                        rendered = self.renderer.render(
+                            yolo_rendered, landmarks, eye_result, mouth_result,
+                            pose_result, fatigue_status, dl_result=dl_result,
+                        )
+                    else:
+                        rendered = yolo_rendered
                 except Exception as e:
                     self._yolo_enabled = False
                     self._last_yolo_error = str(e)
@@ -460,6 +485,7 @@ class WebDetectionSystem:
                 with self._lock:
                     self._latest_data["dms_alerts"] = []
                     self._latest_data["is_dms_alert"] = False
+                rendered = rule_rendered
 
             _, jpeg = cv2.imencode(".jpg", rendered, [cv2.IMWRITE_JPEG_QUALITY, 80])
             with self._lock:
@@ -610,6 +636,14 @@ def api_yolo_toggle():
     enabled = bool(data.get("enabled", False))
     ok, message = system.set_yolo_enabled(enabled)
     return jsonify({"success": ok, "enabled": system._yolo_enabled, "message": message})
+
+
+@app.route("/api/display_mode", methods=["POST"])
+def api_display_mode():
+    data = request.get_json(force=True)
+    mode = data.get("mode", "yolo")
+    display_mode = system.set_display_mode(mode)
+    return jsonify({"success": True, "display_mode": display_mode})
 
 
 @app.route("/video_feed")

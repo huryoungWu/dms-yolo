@@ -2,6 +2,186 @@
 
 let polling = null;
 let isRunning = false;
+let clockTimer = null;
+let viewMode = "experiment";
+let recentScenarioEvents = [];
+let isYoloEnabled = false;
+let displayMode = "both";
+
+function formatCurrentTime() {
+    const now = new Date();
+    return now.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+function updateHeaderClock() {
+    const timeEl = document.getElementById("headerCurrentTime");
+    if (timeEl) {
+        timeEl.textContent = formatCurrentTime();
+    }
+}
+
+updateHeaderClock();
+if (!clockTimer) {
+    clockTimer = setInterval(updateHeaderClock, 1000);
+}
+
+function setViewMode(mode) {
+    viewMode = mode === "scenario" ? "scenario" : "experiment";
+
+    const experimentBtn = document.getElementById("viewModeExperiment");
+    const scenarioBtn = document.getElementById("viewModeScenario");
+    const dashboardGrid = document.getElementById("dashboardGrid");
+    const experimentSidebar = document.getElementById("experimentSidebar");
+    const scenarioSidebar = document.getElementById("scenarioSidebar");
+    const controlBar = document.getElementById("controlBar");
+    const monitorWorkspace = document.getElementById("monitorWorkspace");
+    const systemFooter = document.querySelector(".system-footer");
+    const workspaceTopbar = document.querySelector(".workspace-topbar");
+    const headerStrategyCard = document.getElementById("headerStrategyCard");
+    const headerEngineCard = document.getElementById("headerEngineCard");
+
+    if (experimentBtn) experimentBtn.classList.toggle("active", viewMode === "experiment");
+    if (scenarioBtn) scenarioBtn.classList.toggle("active", viewMode === "scenario");
+
+    if (dashboardGrid) {
+        dashboardGrid.classList.toggle("experiment-mode", viewMode === "experiment");
+        dashboardGrid.classList.toggle("scenario-mode", viewMode === "scenario");
+    }
+
+    if (experimentSidebar) {
+        experimentSidebar.classList.toggle("view-hidden", viewMode !== "experiment");
+    }
+
+    if (scenarioSidebar) {
+        scenarioSidebar.classList.toggle("view-hidden", viewMode !== "scenario");
+    }
+
+    if (controlBar) {
+        controlBar.classList.toggle("experiment-control-card", viewMode === "experiment");
+        controlBar.classList.toggle("scenario-control-card", viewMode === "scenario");
+        if (viewMode === "scenario" && scenarioSidebar) {
+            scenarioSidebar.prepend(controlBar);
+        } else if (viewMode === "experiment" && experimentSidebar) {
+            experimentSidebar.prepend(controlBar);
+        }
+    }
+
+    if (systemFooter) {
+        systemFooter.classList.toggle("view-hidden", viewMode === "scenario");
+    }
+
+    if (workspaceTopbar) {
+        workspaceTopbar.classList.toggle("view-hidden", viewMode === "scenario");
+    }
+
+    if (headerStrategyCard) {
+        headerStrategyCard.classList.toggle("view-hidden", viewMode === "scenario");
+    }
+
+    if (headerEngineCard) {
+        headerEngineCard.classList.toggle("view-hidden", viewMode === "scenario");
+    }
+}
+
+function deriveRiskLevel(d) {
+    if (d.is_dms_alert && Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
+        return "高风险";
+    }
+    if (d.is_fatigued || d.eye_closed || d.is_yawning || d.is_head_down) {
+        return "注意";
+    }
+    return "低风险";
+}
+
+function deriveAlertSummary(d) {
+    if (Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
+        return d.dms_alerts[0];
+    }
+    if (d.reasons && d.reasons.length > 0) {
+        return d.reasons.join("、");
+    }
+    return "暂无告警";
+}
+
+function deriveMonitorState() {
+    return isRunning ? "监测中" : "待启动";
+}
+
+function deriveCameraState(d) {
+    if (!isRunning) return "未启动";
+    return d && d.face_detected ? "在线" : "在线";
+}
+
+function renderScenarioEvents() {
+    const list = document.getElementById("scenarioAlertList");
+    if (!list) return;
+
+    if (recentScenarioEvents.length === 0) {
+        list.innerHTML = '<div class="scenario-alert-empty">暂无关键事件</div>';
+        return;
+    }
+
+    list.innerHTML = recentScenarioEvents
+        .slice(-2)
+        .reverse()
+        .map(event => (
+            `<div class="scenario-alert-item ${event.level}">[${event.time}] ${event.message}</div>`
+        ))
+        .join("");
+}
+
+function updateYoloToggleButton() {
+    const btn = document.getElementById("btnYoloToggle");
+    if (!btn) return;
+    btn.textContent = "YOLO模式";
+    btn.classList.toggle("enabled", isYoloEnabled);
+}
+
+function updateDisplayToggleButton() {
+    const btn = document.getElementById("btnDisplayToggle");
+    if (!btn) return;
+
+    btn.classList.remove("display-rule", "display-both");
+
+    if (displayMode === "rule") {
+        btn.textContent = "显示：规则";
+        btn.classList.add("display-rule");
+    } else if (displayMode === "both") {
+        btn.textContent = "显示：双模式";
+        btn.classList.add("display-both");
+    } else {
+        btn.textContent = "显示：YOLO";
+    }
+}
+
+function updateScenarioPanel(d, riskLevel, alertSummary) {
+    const scenarioStatusMain = document.getElementById("scenarioStatusMain");
+    const scenarioRiskLevel = document.getElementById("scenarioRiskLevel");
+    const scenarioMonitorState = document.getElementById("scenarioMonitorState");
+    const scenarioCameraState = document.getElementById("scenarioCameraState");
+    const scenarioAlertSummary = document.getElementById("scenarioAlertSummary");
+    const scenarioEyeState = document.getElementById("scenarioEyeState");
+    const scenarioMouthState = document.getElementById("scenarioMouthState");
+    const scenarioHeadState = document.getElementById("scenarioHeadState");
+
+    if (scenarioStatusMain) {
+        if (riskLevel === "高风险") {
+            scenarioStatusMain.textContent = "高风险告警";
+        } else if (riskLevel === "注意") {
+            scenarioStatusMain.textContent = "注意风险";
+        } else {
+            scenarioStatusMain.textContent = "正常驾驶";
+        }
+    }
+
+    if (scenarioRiskLevel) scenarioRiskLevel.textContent = riskLevel;
+    if (scenarioMonitorState) scenarioMonitorState.textContent = deriveMonitorState();
+    if (scenarioCameraState) scenarioCameraState.textContent = deriveCameraState(d);
+    if (scenarioAlertSummary) scenarioAlertSummary.textContent = alertSummary;
+    if (scenarioEyeState) scenarioEyeState.textContent = d.eye_closed ? "闭眼风险" : "正常";
+    if (scenarioMouthState) scenarioMouthState.textContent = d.is_yawning ? "哈欠风险" : "正常";
+    if (scenarioHeadState) scenarioHeadState.textContent = d.is_head_down ? "低头风险" : "正常";
+}
 
 // ---- 控制 ----
 
@@ -16,6 +196,10 @@ async function startDetection() {
         const img = document.getElementById("videoFeed");
         img.src = "/video_feed?" + Date.now();
         img.classList.add("active");
+        document.getElementById("headerMonitorStatus").textContent = "监测中";
+        document.getElementById("headerCameraStatus").textContent = "在线";
+        document.getElementById("scenarioMonitorState").textContent = "监测中";
+        document.getElementById("scenarioCameraState").textContent = "在线";
         startPolling();
         startLogPoll();
     } else {
@@ -32,6 +216,7 @@ async function stopDetection() {
     document.getElementById("videoFeed").src = "";
     document.getElementById("placeholder").classList.remove("hidden");
     document.getElementById("fatigueOverlay").classList.remove("active");
+    document.getElementById("phoneAlertOverlay").classList.remove("active");
     stopPolling();
     stopLogPoll();
     resetUI();
@@ -78,6 +263,38 @@ async function applyConfig() {
     document.getElementById("rulePitch").textContent = `🧑 低头：|Pitch| > ${config.pitch_threshold.toFixed(1)}°（连续${config.head_consec_frames}帧）`;
 }
 
+async function toggleYoloMode() {
+    if (!isYoloEnabled) {
+        await toggleYolo(true);
+    }
+    displayMode = "both";
+    await setDisplayMode("both");
+}
+
+async function setDisplayMode(mode) {
+    const res = await fetch("/api/display_mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+    });
+    const data = await res.json();
+    if (data.success) {
+        displayMode = data.display_mode || "yolo";
+        updateDisplayToggleButton();
+    }
+}
+
+async function cycleDisplayMode() {
+    if (!isYoloEnabled) {
+        await toggleYolo(true);
+    }
+
+    const nextMode = displayMode === "both"
+        ? "yolo"
+        : (displayMode === "yolo" ? "rule" : "both");
+    await setDisplayMode(nextMode);
+}
+
 // ---- 数据轮询 ----
 
 function startPolling() {
@@ -108,6 +325,11 @@ function updateUI(d) {
     const ruleEarEl = document.getElementById("ruleEar");
     const ruleMarEl = document.getElementById("ruleMar");
     const rulePitchEl = document.getElementById("rulePitch");
+    const modeNameMap = {
+        rule: "规则模式",
+        dl: "深度学习模式",
+        hybrid: "混合模式",
+    };
     // EAR
     const earEl = document.getElementById("earValue");
     earEl.textContent = d.ear.toFixed(2);
@@ -192,12 +414,36 @@ function updateUI(d) {
         detailEl.textContent = "";
     }
 
+    const riskLevel = deriveRiskLevel(d);
+    const alertSummary = deriveAlertSummary(d);
+
+    document.getElementById("headerMonitorStatus").textContent = deriveMonitorState();
+    document.getElementById("headerRiskLevel").textContent = riskLevel;
+    document.getElementById("headerCameraStatus").textContent = deriveCameraState(d);
+    document.getElementById("headerEngineInfo").textContent = d.is_dms_alert || Array.isArray(d.dms_alerts)
+        ? "YOLO-DMS"
+        : "YOLO-DMS";
+    document.getElementById("headerStrategyInfo").textContent = "规则模式 + YOLO-DMS";
+    document.getElementById("controlModeValue").textContent = modeNameMap[d.mode] || d.mode || "规则模式";
+    document.getElementById("panelRiskLevel").textContent = riskLevel;
+    document.getElementById("panelAlertSummary").textContent = alertSummary;
+    updateScenarioPanel(d, riskLevel, alertSummary);
+
     // 疲劳警告覆盖层
     const overlay = document.getElementById("fatigueOverlay");
     if (d.is_fatigued) {
         overlay.classList.add("active");
     } else {
         overlay.classList.remove("active");
+    }
+
+    // 打电话预警覆盖层
+    const phoneOverlay = document.getElementById("phoneAlertOverlay");
+    const hasPhoneAlert = Array.isArray(d.dms_alerts) && d.dms_alerts.some(alert => alert.includes("打电话"));
+    if (hasPhoneAlert) {
+        phoneOverlay.classList.add("active");
+    } else {
+        phoneOverlay.classList.remove("active");
     }
 }
 
@@ -215,9 +461,30 @@ function resetUI() {
     document.getElementById("statusDisplay").textContent = "待启动";
     document.getElementById("statusDisplay").className = "status-display";
     document.getElementById("statusDetail").textContent = "";
+    document.getElementById("headerMonitorStatus").textContent = "待启动";
+    document.getElementById("headerRiskLevel").textContent = "低风险";
+    document.getElementById("headerCameraStatus").textContent = "未启动";
+    document.getElementById("headerEngineInfo").textContent = "YOLO-DMS";
+    document.getElementById("headerStrategyInfo").textContent = "规则模式 + YOLO-DMS";
+    document.getElementById("controlModeValue").textContent = "规则模式";
+    document.getElementById("panelRiskLevel").textContent = "低风险";
+    document.getElementById("panelAlertSummary").textContent = "暂无告警";
+    document.getElementById("scenarioStatusMain").textContent = "正常驾驶";
+    document.getElementById("scenarioRiskLevel").textContent = "低风险";
+    document.getElementById("scenarioMonitorState").textContent = "待启动";
+    document.getElementById("scenarioCameraState").textContent = "未启动";
+    document.getElementById("scenarioAlertSummary").textContent = "暂无告警";
+    document.getElementById("scenarioEyeState").textContent = "正常";
+    document.getElementById("scenarioMouthState").textContent = "正常";
+    document.getElementById("scenarioHeadState").textContent = "正常";
     document.getElementById("ruleEar").classList.remove("active");
     document.getElementById("ruleMar").classList.remove("active");
     document.getElementById("rulePitch").classList.remove("active");
+    document.getElementById("fatigueOverlay").classList.remove("active");
+    document.getElementById("phoneAlertOverlay").classList.remove("active");
+    renderScenarioEvents();
+    updateYoloToggleButton();
+    updateDisplayToggleButton();
 }
 
 // ---- 系统日志 ----
@@ -270,9 +537,16 @@ async function fetchLogs() {
                 div.innerHTML = `<span class="log-time">${log.time}</span><span class="log-msg">${log.message}</span>`;
                 container.appendChild(div);
                 updateCriticalLog(log.level, `[${log.time}] ${log.message}`);
+                recentScenarioEvents.push({
+                    time: log.time,
+                    message: log.message,
+                    level: log.level || "info",
+                });
             });
+            recentScenarioEvents = recentScenarioEvents.slice(-2);
             logSince = data.total;
             container.scrollTop = container.scrollHeight;
+            renderScenarioEvents();
         }
     } catch (e) {}
 }
@@ -281,7 +555,9 @@ function clearLogDisplay() {
     const container = document.getElementById("logContainer");
     container.innerHTML = '<div class="log-empty">日志已清空</div>';
     logSince = 0;
+    recentScenarioEvents = [];
     resetCriticalLogPanel();
+    renderScenarioEvents();
 }
 
 // ---- 脚本运行 ----
@@ -348,9 +624,12 @@ async function toggleYolo(enabled) {
             body: JSON.stringify({ enabled }),
         });
         const data = await res.json();
-        alert(data.message || (data.success ? "操作成功" : "操作失败"));
+        if (data.success) {
+            isYoloEnabled = enabled;
+            updateYoloToggleButton();
+        }
     } catch (e) {
-        alert("YOLO 切换失败，请检查后端日志");
+        console.error("YOLO 切换失败，请检查后端日志");
     }
 }
 
@@ -359,3 +638,8 @@ function closeLog() {
     document.getElementById("scriptLogContainer").style.display = "none";
     currentScriptId = null;
 }
+
+setViewMode("experiment");
+renderScenarioEvents();
+updateYoloToggleButton();
+updateDisplayToggleButton();
