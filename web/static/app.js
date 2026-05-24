@@ -7,6 +7,109 @@ let viewMode = "experiment";
 let recentScenarioEvents = [];
 let isYoloEnabled = false;
 let displayMode = "both";
+const speechCooldownMs = 10000;
+const speechMaxCountPerAlert = 3;
+const speechState = new Map();
+
+function normalizeSpeechKey(message) {
+    return String(message || "").trim();
+}
+
+function canSpeakAlert(key) {
+    if (!key) return false;
+    const now = Date.now();
+    const state = speechState.get(key) || { count: 0, lastAt: 0 };
+    if (state.count >= speechMaxCountPerAlert) return false;
+    if (now - state.lastAt < speechCooldownMs) return false;
+    return true;
+}
+
+function markAlertSpoken(key) {
+    const now = Date.now();
+    const prev = speechState.get(key) || { count: 0, lastAt: 0 };
+    speechState.set(key, {
+        count: prev.count + 1,
+        lastAt: now,
+    });
+}
+
+function speakText(text, key) {
+    if (!("speechSynthesis" in window)) return;
+    const normalizedKey = normalizeSpeechKey(key || text);
+    if (!canSpeakAlert(normalizedKey)) return;
+
+    try {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = "zh-CN";
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+        markAlertSpoken(normalizedKey);
+    } catch (error) {
+        console.error("语音播报失败", error);
+    }
+}
+
+function speakAlertByData(d) {
+    if (!isRunning) return;
+
+    if (Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
+        for (const alertText of d.dms_alerts) {
+            if (alertText.includes("打电话")) {
+                speakText("检测到打电话行为，请停止分心，专注驾驶", "dms_phone");
+                return;
+            }
+            if (alertText.includes("抽烟")) {
+                speakText("检测到抽烟行为，请注意驾驶安全", "dms_smoke");
+                return;
+            }
+            if (alertText.includes("闭眼2级")) {
+                speakText("检测到严重闭眼风险，请立即保持清醒", "dms_eye_l2");
+                return;
+            }
+            if (alertText.includes("闭眼1级")) {
+                speakText("检测到闭眼风险，请保持清醒", "dms_eye_l1");
+                return;
+            }
+            if (alertText.includes("低头")) {
+                speakText("检测到低头行为，请抬头注意前方", "dms_head_down");
+                return;
+            }
+            if (alertText.includes("哈欠")) {
+                speakText("检测到打哈欠行为，请注意疲劳风险", "dms_yawn");
+                return;
+            }
+        }
+    }
+
+    if (d.is_fatigued) {
+        speakText("疲劳驾驶预警，请立即休息", "fatigue_general");
+        return;
+    }
+
+    if (d.eye_closed) {
+        speakText("检测到闭眼风险，请保持清醒", "rule_eye_closed");
+        return;
+    }
+
+    if (d.is_yawning) {
+        speakText("检测到打哈欠行为，请注意疲劳风险", "rule_yawn");
+        return;
+    }
+
+    if (d.is_head_down) {
+        speakText("检测到低头行为，请抬头注意前方", "rule_head_down");
+    }
+}
+
+function resetSpeechAlerts() {
+    speechState.clear();
+    if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+    }
+}
 
 function formatCurrentTime() {
     const now = new Date();
@@ -200,6 +303,7 @@ async function startDetection() {
         document.getElementById("headerCameraStatus").textContent = "在线";
         document.getElementById("scenarioMonitorState").textContent = "监测中";
         document.getElementById("scenarioCameraState").textContent = "在线";
+        resetSpeechAlerts();
         startPolling();
         startLogPoll();
     } else {
@@ -217,6 +321,7 @@ async function stopDetection() {
     document.getElementById("placeholder").classList.remove("hidden");
     document.getElementById("fatigueOverlay").classList.remove("active");
     document.getElementById("phoneAlertOverlay").classList.remove("active");
+    resetSpeechAlerts();
     stopPolling();
     stopLogPoll();
     resetUI();
@@ -445,6 +550,8 @@ function updateUI(d) {
     } else {
         phoneOverlay.classList.remove("active");
     }
+
+    speakAlertByData(d);
 }
 
 function resetUI() {
@@ -482,6 +589,7 @@ function resetUI() {
     document.getElementById("rulePitch").classList.remove("active");
     document.getElementById("fatigueOverlay").classList.remove("active");
     document.getElementById("phoneAlertOverlay").classList.remove("active");
+    resetSpeechAlerts();
     renderScenarioEvents();
     updateYoloToggleButton();
     updateDisplayToggleButton();
