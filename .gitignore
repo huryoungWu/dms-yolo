@@ -9,6 +9,7 @@ build/
 
 # 虚拟环境
 venv/
+.venv/
 .env/
 
 # IDE
