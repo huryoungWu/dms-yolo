@@ -7,6 +7,8 @@ let viewMode = "experiment";
 let recentScenarioEvents = [];
 let isYoloEnabled = false;
 let displayMode = "both";
+const distractionOverlayHoldMs = 2000;
+let distractionOverlayUntil = 0;
 const speechCooldownMs = 10000;
 const speechMaxCountPerAlert = 3;
 const speechState = new Map();
@@ -109,6 +111,39 @@ function resetSpeechAlerts() {
     if ("speechSynthesis" in window) {
         window.speechSynthesis.cancel();
     }
+}
+
+function updateDistractionOverlay(d) {
+    const phoneOverlay = document.getElementById("phoneAlertOverlay");
+    const phoneAlertText = document.getElementById("phoneAlertText");
+    if (!phoneOverlay || !phoneAlertText) return;
+
+    const now = Date.now();
+    const alerts = Array.isArray(d.dms_alerts) ? d.dms_alerts : [];
+    const hasPhoneAlert = alerts.some(alert => alert.includes("打电话"));
+    const hasSmokeAlert = alerts.some(alert => alert.includes("抽烟"));
+    const hasDistractionAlert = hasPhoneAlert || hasSmokeAlert;
+
+    if (hasPhoneAlert) {
+        phoneAlertText.textContent = "分心驾驶警告！请停止打电话！";
+        distractionOverlayUntil = now + distractionOverlayHoldMs;
+        phoneOverlay.classList.add("active");
+        return;
+    }
+
+    if (hasSmokeAlert) {
+        phoneAlertText.textContent = "分心驾驶警告！请停止抽烟！";
+        distractionOverlayUntil = now + distractionOverlayHoldMs;
+        phoneOverlay.classList.add("active");
+        return;
+    }
+
+    if (!hasDistractionAlert && now < distractionOverlayUntil) {
+        phoneOverlay.classList.add("active");
+        return;
+    }
+
+    phoneOverlay.classList.remove("active");
 }
 
 function formatCurrentTime() {
@@ -321,6 +356,7 @@ async function stopDetection() {
     document.getElementById("placeholder").classList.remove("hidden");
     document.getElementById("fatigueOverlay").classList.remove("active");
     document.getElementById("phoneAlertOverlay").classList.remove("active");
+    distractionOverlayUntil = 0;
     resetSpeechAlerts();
     stopPolling();
     stopLogPoll();
@@ -542,14 +578,8 @@ function updateUI(d) {
         overlay.classList.remove("active");
     }
 
-    // 打电话预警覆盖层
-    const phoneOverlay = document.getElementById("phoneAlertOverlay");
-    const hasPhoneAlert = Array.isArray(d.dms_alerts) && d.dms_alerts.some(alert => alert.includes("打电话"));
-    if (hasPhoneAlert) {
-        phoneOverlay.classList.add("active");
-    } else {
-        phoneOverlay.classList.remove("active");
-    }
+    // 分心驾驶预警覆盖层
+    updateDistractionOverlay(d);
 
     speakAlertByData(d);
 }
@@ -589,6 +619,7 @@ function resetUI() {
     document.getElementById("rulePitch").classList.remove("active");
     document.getElementById("fatigueOverlay").classList.remove("active");
     document.getElementById("phoneAlertOverlay").classList.remove("active");
+    distractionOverlayUntil = 0;
     resetSpeechAlerts();
     renderScenarioEvents();
     updateYoloToggleButton();

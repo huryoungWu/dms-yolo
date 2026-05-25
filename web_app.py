@@ -74,7 +74,7 @@ class WebDetectionSystem:
         # DMS 告警阈值（秒）
         self._dms_thresholds = {
             "eye_l1": 0.8,
-            "eye_l2": 2.0,
+            "eye_l2": 1.5,
             "head_down": 1.0,
             "yawn": 0.8,
             "look_away": 1.0,
@@ -83,7 +83,7 @@ class WebDetectionSystem:
             "no_driver": 1.0,
             "occlusion": 0.6,
             "yaw_abs": 25.0,
-            "phone_eye_dist": 300.0,   # 手机-眼睛最大有效距离
+            "phone_eye_dist": 420.0,   # 手机-面部关键点最大有效距离
             "cig_mouth_dist": 100.0,   # 香烟-嘴巴最大有效距离
         }
         self._occlusion_cfg = {
@@ -225,12 +225,22 @@ class WebDetectionSystem:
             occlusion_on = (mean_v <= self._occlusion_cfg["dark_mean"]) and (std_v <= self._occlusion_cfg["low_var_std"])
 
         # ====================== 核心修改 ======================
-        # 打电话：检测到手机 + 手机与眼睛距离 < 阈值 + 人脸存在
+        # 打电话：检测到手机 + 手机靠近面部关键点（眼睛/嘴巴） + 人脸存在
         phone_on = False
-        if phone_detected and EYES_CENTER != (0.0, 0.0) and PHONE_CENTER != (0.0, 0.0):
-            dist = self._calc_dist(PHONE_CENTER, EYES_CENTER)
-            print(f'phone_dist:{dist}')
-            if dist < self._dms_thresholds["phone_eye_dist"]:
+        if phone_detected and PHONE_CENTER != (0.0, 0.0):
+            phone_dist_candidates = []
+            if EYES_CENTER != (0.0, 0.0):
+                phone_dist_candidates.append(self._calc_dist(PHONE_CENTER, EYES_CENTER))
+            if MOUTH_CENTER != (0.0, 0.0):
+                phone_dist_candidates.append(self._calc_dist(PHONE_CENTER, MOUTH_CENTER))
+
+            if phone_dist_candidates:
+                dist = min(phone_dist_candidates)
+                print(f'phone_dist:{dist}')
+                if dist < self._dms_thresholds["phone_eye_dist"]:
+                    phone_on = True
+            else:
+                # 若手机稳定出现但人脸关键点暂时不稳，保守视为打电话候选
                 phone_on = True
 
         # 抽烟：检测到香烟 + 香烟与嘴巴距离 < 阈值 + 人脸存在
@@ -255,7 +265,7 @@ class WebDetectionSystem:
 
         eye_elapsed = self._elapsed("eye_closed", now_ts)
         if eye_elapsed >= self._dms_thresholds["eye_l2"]:
-            alerts.append("闭眼2级预警（闭眼≥2.0秒）")
+            alerts.append("闭眼2级预警（闭眼≥1.5秒）")
         elif eye_elapsed >= self._dms_thresholds["eye_l1"]:
             alerts.append("闭眼1级预警（闭眼≥0.8秒）")
 
