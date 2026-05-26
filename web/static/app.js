@@ -56,9 +56,14 @@ function speakText(text, key) {
 
 function speakAlertByData(d) {
     if (!isRunning) return;
-
+    console.log(d.dms_alerts)
     if (Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
         for (const alertText of d.dms_alerts) {
+            if (alertText.includes("左顾右盼")) {
+                speakText("检测到左顾右盼行为，请抬头注意前方", "dms_look_away");
+                return;
+            }
+            
             if (alertText.includes("打电话")) {
                 speakText("检测到打电话行为，请停止分心，专注驾驶", "dms_phone");
                 return;
@@ -79,6 +84,7 @@ function speakAlertByData(d) {
                 speakText("检测到低头行为，请抬头注意前方", "dms_head_down");
                 return;
             }
+            
             if (alertText.includes("哈欠")) {
                 speakText("检测到打哈欠行为，请注意疲劳风险", "dms_yawn");
                 return;

@@ -31,12 +31,12 @@ EYES_CENTER = (0.0, 0.0)
 MOUTH_CENTER = (0.0, 0.0)
 # 默认阈值
 _DEFAULTS = {
-    "ear_threshold": 0.2,
-    "mar_threshold": 0.75,
+    "ear_threshold": 0.05,
+    "mar_threshold": 0.4,
     "pitch_threshold": 25.0,
-    "eye_consec_frames": 48,
+    "eye_consec_frames": 25,
     "mouth_consec_frames": 25,
-    "head_consec_frames": 50,
+    "head_consec_frames": 25,
 }
 
 
@@ -77,13 +77,13 @@ class WebDetectionSystem:
             "eye_l2": 1.5,
             "head_down": 1.0,
             "yawn": 0.8,
-            "look_away": 1.0,
+            "look_away": 0.2,
             "phone": 0.5,       # 打电话持续时间
             "smoke": 0.5,        # 抽烟持续时间
             "no_driver": 1.0,
             "occlusion": 0.6,
-            "yaw_abs": 25.0,
-            "phone_eye_dist": 420.0,   # 手机-面部关键点最大有效距离
+            "yaw_abs": 5.0,
+            "phone_eye_dist": 150.0,   # 手机-面部关键点最大有效距离
             "cig_mouth_dist": 100.0,   # 香烟-嘴巴最大有效距离
         }
         self._occlusion_cfg = {
@@ -209,8 +209,9 @@ class WebDetectionSystem:
         # 左顾右盼: 优先 YOLO 类；若无则用 yaw 近似
         look_away_on = self._class_present(label_set, "look away", "looking_away", "distracted")
         if not look_away_on:
+            print(f'pose_result:{pose_result}')
             look_away_on = abs(float(getattr(pose_result, "yaw", 0.0))) >= self._dms_thresholds["yaw_abs"]
-
+            print(f'look_away_on:{look_away_on}')
         # 驾驶座无人: 当前模型无该类，使用“既无开眼/闭眼也无安全带”作为保守近似
         no_driver_on = self._class_present(label_set, "no driver", "no_driver", "empty seat", "empty_seat")
         if not no_driver_on:
@@ -266,8 +267,8 @@ class WebDetectionSystem:
         eye_elapsed = self._elapsed("eye_closed", now_ts)
         if eye_elapsed >= self._dms_thresholds["eye_l2"]:
             alerts.append("闭眼2级预警（闭眼≥1.5秒）")
-        elif eye_elapsed >= self._dms_thresholds["eye_l1"]:
-            alerts.append("闭眼1级预警（闭眼≥0.8秒）")
+        # elif eye_elapsed >= self._dms_thresholds["eye_l1"]:
+        #     alerts.append("闭眼1级预警（闭眼≥0.8秒）")
 
         if self._elapsed("head_down", now_ts) >= self._dms_thresholds["head_down"]:
             alerts.append("低头预警（低头≥1.0秒）")

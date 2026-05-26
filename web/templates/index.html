@@ -129,9 +129,9 @@
                         </div>
                         <div class="rule-hints" id="ruleHints">
                             <div class="rule-title">规则模式阈值提醒</div>
-                            <div class="rule-item" id="ruleEar">👁️ 闭眼：EAR < 0.20（连续48帧）</div>
-                            <div class="rule-item" id="ruleMar">👄 哈欠：MAR > 0.75（连续25帧）</div>
-                            <div class="rule-item" id="rulePitch">🧑 低头：|Pitch| > 25.0°（连续50帧）</div>
+                            <div class="rule-item" id="ruleEar">👁️ 闭眼：EAR < 0.20（连续25帧）</div>
+                            <div class="rule-item" id="ruleMar">👄 哈欠：MAR > 0.40（连续25帧）</div>
+                            <div class="rule-item" id="rulePitch">🧑 低头：|Pitch| > 25.0°（连续25帧）</div>
                             <div class="rule-note">头部姿态由 PnP 算法估计 Pitch / Yaw / Roll</div>
                         </div>
                         <div class="critical-log-panel" id="criticalLogPanel">
@@ -164,7 +164,7 @@
                                     <div class="progress-fill mar-fill" id="marBar"></div>
                                 </div>
                                 <div class="metric-info">
-                                    <span>阈值: <span id="marThreshold">0.75</span></span>
+                                    <span>阈值: <span id="marThreshold">0.40</span></span>
                                     <span>帧计数: <span id="mouthFrameCount">0</span></span>
                                 </div>
                             </div>
@@ -227,7 +227,7 @@
                                 </div>
                                 <div class="setting-row">
                                     <label>MAR 阈值</label>
-                                    <input type="number" id="cfgMar" value="0.75" step="0.05" min="0.3" max="1.5">
+                                    <input type="number" id="cfgMar" value="0.4" step="0.05" min="0.3" max="1.5">
                                 </div>
                                 <div class="setting-row">
                                     <label>俯仰角阈值</label>
@@ -235,7 +235,7 @@
                                 </div>
                                 <div class="setting-row">
                                     <label>闭眼帧数</label>
-                                    <input type="number" id="cfgEyeFrames" value="48" step="1" min="10" max="100">
+                                    <input type="number" id="cfgEyeFrames" value="25" step="1" min="10" max="100">
                                 </div>
                                 <div class="setting-row">
                                     <label>哈欠帧数</label>
@@ -243,7 +243,7 @@
                                 </div>
                                 <div class="setting-row">
                                     <label>低头帧数</label>
-                                    <input type="number" id="cfgHeadFrames" value="50" step="1" min="10" max="100">
+                                    <input type="number" id="cfgHeadFrames" value="25" step="1" min="10" max="100">
                                 </div>
                             </div>
                             <button class="btn btn-apply" onclick="applyConfig()">应用设置</button>
