@@ -27,6 +27,7 @@ app = Flask(__name__, template_folder="web/templates", static_folder="web/static
 
 PHONE_CENTER = (0.0, 0.0)
 CIGARETTE_CENTER = (0.0, 0.0)
+DRINKING_CENTER = (0.0,0.0)
 EYES_CENTER = (0.0, 0.0)
 MOUTH_CENTER = (0.0, 0.0)
 # 默认阈值
@@ -83,8 +84,10 @@ class WebDetectionSystem:
             "no_driver": 1.0,
             "occlusion": 0.6,
             "yaw_abs": 5.0,
+            "drinking": 0.2,  
             "phone_eye_dist": 150.0,   # 手机-面部关键点最大有效距离
-            "cig_mouth_dist": 100.0,   # 香烟-嘴巴最大有效距离
+            "cig_mouth_dist": 200.0,   # 香烟-嘴巴最大有效距离
+            "drink_mouth_dist": 200.0, # 喝水-嘴巴最大有效距离
         }
         self._occlusion_cfg = {
             "dark_mean": 35.0,
@@ -194,14 +197,14 @@ class WebDetectionSystem:
         """按业务规则生成 DMS 预警信息。"""
         now_ts = time.time()
         label_set = {str(x).strip().lower() for x in yolo_labels}
-
+        print(f'label_set:{label_set}')
         # 适配当前模型类别: open eye / closed eye / cigarette / phone / seatbelt
         phone_detected = self._class_present(label_set, "phone")
         smoke_detected = self._class_present(label_set, "cigarette")
         closed_eye_on = eye_result.is_closed or self._class_present(label_set, "closed eye", "closed_eye")
         open_eye_on = self._class_present(label_set, "open eye", "open_eye")
         seatbelt_on = self._class_present(label_set, "seatbelt", "seat belt")
-
+        drinking_detected = self._class_present(label_set, "drinking", "drinking")
         # 低头/哈欠由现有分析器保证，YOLO 有对应类时可叠加
         yawn_on = mouth_result.is_yawning or self._class_present(label_set, "yawn", "yawning")
         head_down_on = pose_result.is_head_down or self._class_present(label_set, "head down", "head_down")
@@ -209,9 +212,8 @@ class WebDetectionSystem:
         # 左顾右盼: 优先 YOLO 类；若无则用 yaw 近似
         look_away_on = self._class_present(label_set, "look away", "looking_away", "distracted")
         if not look_away_on:
-            print(f'pose_result:{pose_result}')
             look_away_on = abs(float(getattr(pose_result, "yaw", 0.0))) >= self._dms_thresholds["yaw_abs"]
-            print(f'look_away_on:{look_away_on}')
+            
         # 驾驶座无人: 当前模型无该类，使用“既无开眼/闭眼也无安全带”作为保守近似
         no_driver_on = self._class_present(label_set, "no driver", "no_driver", "empty seat", "empty_seat")
         if not no_driver_on:
@@ -237,7 +239,7 @@ class WebDetectionSystem:
 
             if phone_dist_candidates:
                 dist = min(phone_dist_candidates)
-                print(f'phone_dist:{dist}')
+                # print(f'phone_dist:{dist}')
                 if dist < self._dms_thresholds["phone_eye_dist"]:
                     phone_on = True
             else:
@@ -248,10 +250,17 @@ class WebDetectionSystem:
         smoke_on = False
         if smoke_detected and MOUTH_CENTER != (0.0, 0.0) and CIGARETTE_CENTER != (0.0, 0.0):
             dist = self._calc_dist(CIGARETTE_CENTER, MOUTH_CENTER)
-            print(f'smoke_dist:{dist}')
+            # print(f'smoke_dist:{dist}')
             if dist < self._dms_thresholds["cig_mouth_dist"]:
                 smoke_on = True
         # ======================================================
+    
+        drinking_on = False
+        if drinking_detected and MOUTH_CENTER != (0.0, 0.0) and DRINKING_CENTER != (0.0, 0.0):
+            dist = self._calc_dist(DRINKING_CENTER, MOUTH_CENTER)
+            print(f'drinking_dist:{dist}')
+            if dist < self._dms_thresholds["drink_mouth_dist"]:
+                drinking_on = True
 
         self._update_timer("eye_closed", closed_eye_on, now_ts)
         self._update_timer("head_down", head_down_on, now_ts)
@@ -261,7 +270,7 @@ class WebDetectionSystem:
         self._update_timer("smoke", smoke_on, now_ts)
         self._update_timer("no_driver", no_driver_on, now_ts)
         self._update_timer("occlusion", occlusion_on, now_ts)
-
+        self._update_timer("drinking", drinking_on, now_ts)
         alerts = []
 
         eye_elapsed = self._elapsed("eye_closed", now_ts)
@@ -290,6 +299,9 @@ class WebDetectionSystem:
 
         if self._elapsed("no_driver", now_ts) >= self._dms_thresholds["no_driver"]:
             alerts.append("驾驶座无人预警")
+        
+        if self._elapsed("drinking", now_ts) >= self._dms_thresholds["drinking"]:
+            alerts.append("喝水预警")
 
         signature = "|".join(alerts)
         if signature and signature != self._dms_state.get("last_alert_signature", ""):
@@ -449,9 +461,10 @@ class WebDetectionSystem:
                             class_ids = boxes.cls.tolist()
                             
                             # 重置坐标
-                            global PHONE_CENTER, CIGARETTE_CENTER
+                            global PHONE_CENTER, CIGARETTE_CENTER, DRINKING_CENTER
                             PHONE_CENTER = (0.0, 0.0)
                             CIGARETTE_CENTER = (0.0, 0.0)
+                            DRINKING_CENTER = (0.0, 0.0)
                             
                             for i, cls_id in enumerate(class_ids):
                                 cls_name = names_map.get(int(cls_id), str(int(cls_id)))
@@ -467,6 +480,8 @@ class WebDetectionSystem:
                                     PHONE_CENTER = center_point
                                 elif cls_name.lower() == 'cigarette':
                                     CIGARETTE_CENTER = center_point
+                                elif cls_name.lower() == 'drinking':
+                                    DRINKING_CENTER = center_point
                         yolo_rendered = result0.plot()
 
                     dms_alerts = self._build_dms_alerts(

@@ -63,7 +63,10 @@ function speakAlertByData(d) {
                 speakText("检测到左顾右盼行为，请抬头注意前方", "dms_look_away");
                 return;
             }
-            
+            if (alertText.includes("喝水")) {
+                speakText("检测到喝水行为，请注意驾驶安全", "dms_drinking");
+                return;
+            }
             if (alertText.includes("打电话")) {
                 speakText("检测到打电话行为，请停止分心，专注驾驶", "dms_phone");
                 return;
