@@ -360,6 +360,7 @@ class WebDetectionSystem:
 
             raw_frame = frame.copy()
             rule_rendered = frame.copy()
+            dl_result = None
             landmarks = self.face_detector.detect(frame)
             # 计算眼睛中心点坐标
             left_eye_center = (sum([p[0] for p in landmarks.left_eye]) / len(landmarks.left_eye), 
@@ -385,7 +386,6 @@ class WebDetectionSystem:
                 pose_result = self.head_pose_analyzer.estimate_pose(
                     landmarks.head_pose_points, frame.shape
                 )
-                dl_result = None
                 fatigue_status = self.fatigue_evaluator.evaluate(
                     eye_result, mouth_result, pose_result,
                     dl_result=dl_result, mode=self.mode,

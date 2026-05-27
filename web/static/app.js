@@ -6,12 +6,52 @@ let clockTimer = null;
 let viewMode = "experiment";
 let recentScenarioEvents = [];
 let isYoloEnabled = false;
-let displayMode = "both";
-const distractionOverlayHoldMs = 2000;
+let displayMode = "rule";
+const alertOverlayHoldMs = 3000;
 let distractionOverlayUntil = 0;
+let fatigueOverlayUntil = 0;
 const speechCooldownMs = 10000;
 const speechMaxCountPerAlert = 3;
 const speechState = new Map();
+let isSpeechPlaying = false;
+
+function getDistractionAlerts(d) {
+    const alerts = Array.isArray(d.dms_alerts) ? d.dms_alerts : [];
+    return alerts.filter(alert =>
+        alert.includes("打电话") ||
+        alert.includes("抽烟") ||
+        alert.includes("左顾右盼") ||
+        alert.includes("玩手机") ||
+        alert.includes("喝水")
+    );
+}
+
+function getFatigueAlerts(d) {
+    const alerts = Array.isArray(d.dms_alerts) ? d.dms_alerts : [];
+    const fatigueAlerts = alerts.filter(alert =>
+        alert.includes("闭眼") ||
+        alert.includes("打哈欠") ||
+        alert.includes("低头")
+    );
+
+    if (fatigueAlerts.length > 0) {
+        return fatigueAlerts;
+    }
+
+    const fallbackAlerts = [];
+    if (d.eye_closed) fallbackAlerts.push("闭眼预警");
+    if (d.is_yawning) fallbackAlerts.push("打哈欠预警");
+    if (d.is_head_down) fallbackAlerts.push("低头预警");
+    if (d.is_fatigued && Array.isArray(d.reasons)) {
+        d.reasons.forEach(reason => fallbackAlerts.push(`${reason}预警`));
+    }
+    return fallbackAlerts;
+}
+
+function isDistractionWarningHeld() {
+    const phoneOverlay = document.getElementById("phoneAlertOverlay");
+    return Date.now() < distractionOverlayUntil || Boolean(phoneOverlay && phoneOverlay.classList.contains("active"));
+}
 
 function normalizeSpeechKey(message) {
     return String(message || "").trim();
@@ -41,57 +81,73 @@ function speakText(text, key) {
     if (!canSpeakAlert(normalizedKey)) return;
 
     try {
+        window.speechSynthesis.cancel();
+        isSpeechPlaying = false;
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "zh-CN";
         utterance.rate = 1;
         utterance.pitch = 1;
         utterance.volume = 1;
-        window.speechSynthesis.cancel();
+        utterance.onstart = () => {
+            isSpeechPlaying = true;
+        };
+        utterance.onend = () => {
+            isSpeechPlaying = false;
+        };
+        utterance.onerror = () => {
+            isSpeechPlaying = false;
+        };
         window.speechSynthesis.speak(utterance);
         markAlertSpoken(normalizedKey);
     } catch (error) {
+        isSpeechPlaying = false;
         console.error("语音播报失败", error);
     }
 }
 
 function speakAlertByData(d) {
     if (!isRunning) return;
-    console.log(d.dms_alerts)
-    if (Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
-        for (const alertText of d.dms_alerts) {
-            if (alertText.includes("左顾右盼")) {
-                speakText("检测到左顾右盼行为，请抬头注意前方", "dms_look_away");
-                return;
-            }
-            if (alertText.includes("喝水")) {
-                speakText("检测到喝水行为，请注意驾驶安全", "dms_drinking");
-                return;
-            }
-            if (alertText.includes("打电话")) {
-                speakText("检测到打电话行为，请停止分心，专注驾驶", "dms_phone");
-                return;
-            }
-            if (alertText.includes("抽烟")) {
-                speakText("检测到抽烟行为，请注意驾驶安全", "dms_smoke");
-                return;
-            }
-            if (alertText.includes("闭眼2级")) {
-                speakText("检测到严重闭眼风险，请立即保持清醒", "dms_eye_l2");
-                return;
-            }
-            if (alertText.includes("闭眼1级")) {
-                speakText("检测到闭眼风险，请保持清醒", "dms_eye_l1");
-                return;
-            }
-            if (alertText.includes("低头")) {
-                speakText("检测到低头行为，请抬头注意前方", "dms_head_down");
-                return;
-            }
-            
-            if (alertText.includes("哈欠")) {
-                speakText("检测到打哈欠行为，请注意疲劳风险", "dms_yawn");
-                return;
-            }
+    const distractionAlerts = getDistractionAlerts(d);
+    const hasHeldDistractionWarning = distractionAlerts.length === 0 && isDistractionWarningHeld();
+    const fatigueAlerts = (distractionAlerts.length > 0 || hasHeldDistractionWarning) ? [] : getFatigueAlerts(d);
+
+    for (const alertText of distractionAlerts) {
+        if (alertText.includes("左顾右盼")) {
+            speakText("检测到左顾右盼行为，请立即专注前方道路", "dms_look_away");
+            return;
+        }
+        if (alertText.includes("打电话")) {
+            speakText("检测到手机使用行为，请立即停止使用手机，专注驾驶", "dms_phone");
+            return;
+        }
+        if (alertText.includes("抽烟")) {
+            speakText("检测到抽烟行为，请立即停止危险行为", "dms_smoke");
+            return;
+        }
+        if (alertText.includes("玩手机")) {
+            speakText("检测到玩手机行为，请立即放下手机，专注驾驶", "dms_phone_use");
+            return;
+        }
+        if (alertText.includes("喝水")) {
+            speakText("检测到喝水行为，请注意分心驾驶风险", "dms_drinking");
+            return;
+        }
+    }
+
+    if (hasHeldDistractionWarning) return;
+
+    for (const alertText of fatigueAlerts) {
+        if (alertText.includes("闭眼")) {
+            speakText("检测到闭眼风险，请立即保持清醒", "fatigue_eye");
+            return;
+        }
+        if (alertText.includes("低头")) {
+            speakText("检测到低头行为，请抬头注意前方", "fatigue_head_down");
+            return;
+        }
+        if (alertText.includes("哈欠")) {
+            speakText("检测到打哈欠行为，请注意疲劳风险", "fatigue_yawn");
+            return;
         }
     }
 
@@ -117,6 +173,7 @@ function speakAlertByData(d) {
 
 function resetSpeechAlerts() {
     speechState.clear();
+    isSpeechPlaying = false;
     if ("speechSynthesis" in window) {
         window.speechSynthesis.cancel();
     }
@@ -128,26 +185,45 @@ function updateDistractionOverlay(d) {
     if (!phoneOverlay || !phoneAlertText) return;
 
     const now = Date.now();
-    const alerts = Array.isArray(d.dms_alerts) ? d.dms_alerts : [];
-    const hasPhoneAlert = alerts.some(alert => alert.includes("打电话"));
-    const hasSmokeAlert = alerts.some(alert => alert.includes("抽烟"));
-    const hasDistractionAlert = hasPhoneAlert || hasSmokeAlert;
+    const distractionAlerts = getDistractionAlerts(d);
+    const hasDistractionAlert = distractionAlerts.length > 0;
 
-    if (hasPhoneAlert) {
-        phoneAlertText.textContent = "分心驾驶警告！请停止打电话！";
-        distractionOverlayUntil = now + distractionOverlayHoldMs;
+    if (distractionAlerts.some(alert => alert.includes("打电话"))) {
+        phoneAlertText.textContent = "分心驾驶警告！请停止使用手机！";
+        distractionOverlayUntil = now + alertOverlayHoldMs;
         phoneOverlay.classList.add("active");
         return;
     }
 
-    if (hasSmokeAlert) {
+    if (distractionAlerts.some(alert => alert.includes("抽烟"))) {
         phoneAlertText.textContent = "分心驾驶警告！请停止抽烟！";
-        distractionOverlayUntil = now + distractionOverlayHoldMs;
+        distractionOverlayUntil = now + alertOverlayHoldMs;
         phoneOverlay.classList.add("active");
         return;
     }
 
-    if (!hasDistractionAlert && now < distractionOverlayUntil) {
+    if (distractionAlerts.some(alert => alert.includes("左顾右盼"))) {
+        phoneAlertText.textContent = "分心驾驶警告！请立即专注前方道路！";
+        distractionOverlayUntil = now + alertOverlayHoldMs;
+        phoneOverlay.classList.add("active");
+        return;
+    }
+
+    if (distractionAlerts.some(alert => alert.includes("玩手机"))) {
+        phoneAlertText.textContent = "分心驾驶警告！请立即放下手机！";
+        distractionOverlayUntil = now + alertOverlayHoldMs;
+        phoneOverlay.classList.add("active");
+        return;
+    }
+
+    if (distractionAlerts.some(alert => alert.includes("喝水"))) {
+        phoneAlertText.textContent = "分心驾驶警告！请停止喝水并专注驾驶！";
+        distractionOverlayUntil = now + alertOverlayHoldMs;
+        phoneOverlay.classList.add("active");
+        return;
+    }
+
+    if (!hasDistractionAlert && (now < distractionOverlayUntil || isSpeechPlaying)) {
         phoneOverlay.classList.add("active");
         return;
     }
@@ -231,7 +307,7 @@ function setViewMode(mode) {
 }
 
 function deriveRiskLevel(d) {
-    if (d.is_dms_alert && Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
+    if (getDistractionAlerts(d).length > 0 || getFatigueAlerts(d).length > 0) {
         return "高风险";
     }
     if (d.is_fatigued || d.eye_closed || d.is_yawning || d.is_head_down) {
@@ -241,11 +317,16 @@ function deriveRiskLevel(d) {
 }
 
 function deriveAlertSummary(d) {
-    if (Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
-        return d.dms_alerts[0];
+    const distractionAlerts = getDistractionAlerts(d);
+    const fatigueAlerts = getFatigueAlerts(d);
+    if (distractionAlerts.length > 0) {
+        return `分心警告：${distractionAlerts[0]}`;
+    }
+    if (fatigueAlerts.length > 0) {
+        return `疲劳警告：${fatigueAlerts[0]}`;
     }
     if (d.reasons && d.reasons.length > 0) {
-        return d.reasons.join("、");
+        return `疲劳警告：${d.reasons.join("、")}`;
     }
     return "暂无告警";
 }
@@ -366,6 +447,7 @@ async function stopDetection() {
     document.getElementById("fatigueOverlay").classList.remove("active");
     document.getElementById("phoneAlertOverlay").classList.remove("active");
     distractionOverlayUntil = 0;
+    fatigueOverlayUntil = 0;
     resetSpeechAlerts();
     stopPolling();
     stopLogPoll();
@@ -414,34 +496,37 @@ async function applyConfig() {
 }
 
 async function toggleYoloMode() {
+    await toggleYolo(!isYoloEnabled);
     if (!isYoloEnabled) {
-        await toggleYolo(true);
+        displayMode = "rule";
+        updateDisplayToggleButton();
     }
-    displayMode = "both";
-    await setDisplayMode("both");
 }
 
 async function setDisplayMode(mode) {
+    const resolvedMode = !isYoloEnabled && mode !== "rule" ? "rule" : mode;
     const res = await fetch("/api/display_mode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({ mode: resolvedMode }),
     });
     const data = await res.json();
     if (data.success) {
-        displayMode = data.display_mode || "yolo";
+        displayMode = data.display_mode || "rule";
         updateDisplayToggleButton();
     }
 }
 
 async function cycleDisplayMode() {
     if (!isYoloEnabled) {
-        await toggleYolo(true);
+        displayMode = "rule";
+        updateDisplayToggleButton();
+        return;
     }
 
-    const nextMode = displayMode === "both"
+    const nextMode = displayMode === "rule"
         ? "yolo"
-        : (displayMode === "yolo" ? "rule" : "both");
+        : (displayMode === "yolo" ? "both" : "rule");
     await setDisplayMode(nextMode);
 }
 
@@ -519,15 +604,21 @@ function updateUI(d) {
     statusEl.textContent = d.status;
     statusEl.className = "status-display";
 
-    if (d.is_dms_alert && Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
+    const currentDistractionAlerts = getDistractionAlerts(d);
+    const distractionAlerts = currentDistractionAlerts.length > 0
+        ? currentDistractionAlerts
+        : (isDistractionWarningHeld() ? ["分心驾驶预警"] : []);
+    const fatigueAlerts = distractionAlerts.length > 0 ? [] : getFatigueAlerts(d);
+
+    if (distractionAlerts.length > 0) {
         statusEl.classList.add("danger");
-        statusEl.textContent = "⚠️ DMS预警";
+        statusEl.textContent = "⚠️ 分心警告";
+    } else if (fatigueAlerts.length > 0 || d.is_fatigued) {
+        statusEl.classList.add("danger");
+        statusEl.textContent = "⚠️ 疲劳警告";
     } else if (Array.isArray(d.dms_alerts)) {
         statusEl.classList.add("warning");
         statusEl.textContent = "🟢 YOLO-DMS监测中";
-    } else if (d.is_fatigued) {
-        statusEl.classList.add("danger");
-        statusEl.textContent = "⚠️ 疲劳驾驶";
     } else if (d.eye_closed || d.is_yawning || d.is_head_down) {
         statusEl.classList.add("warning");
     }
@@ -538,8 +629,10 @@ function updateUI(d) {
     const marThreshold = parseFloat(document.getElementById("marThreshold").textContent) || 0.75;
     const pitchThreshold = parseFloat(document.getElementById("pitchThreshold").textContent) || 25.0;
 
-    if (d.is_dms_alert && Array.isArray(d.dms_alerts) && d.dms_alerts.length > 0) {
-        detailEl.textContent = "DMS告警: " + d.dms_alerts.join("；");
+    if (distractionAlerts.length > 0) {
+        detailEl.textContent = "分心警告: " + distractionAlerts.join("；");
+    } else if (fatigueAlerts.length > 0) {
+        detailEl.textContent = "疲劳警告: " + fatigueAlerts.join("；");
     } else if (Array.isArray(d.dms_alerts)) {
         detailEl.textContent = "未触发DMS预警，系统持续检测中";
     } else if (d.mode === "rule" && d.face_detected && (d.eye_closed || d.is_yawning || d.is_head_down)) {
@@ -564,8 +657,14 @@ function updateUI(d) {
         detailEl.textContent = "";
     }
 
-    const riskLevel = deriveRiskLevel(d);
-    const alertSummary = deriveAlertSummary(d);
+    const riskLevel = deriveRiskLevel({
+        ...d,
+        dms_alerts: distractionAlerts.length > 0 ? distractionAlerts : fatigueAlerts
+    });
+    const alertSummary = deriveAlertSummary({
+        ...d,
+        dms_alerts: distractionAlerts.length > 0 ? distractionAlerts : fatigueAlerts
+    });
 
     document.getElementById("headerMonitorStatus").textContent = deriveMonitorState();
     document.getElementById("headerRiskLevel").textContent = riskLevel;
@@ -579,16 +678,26 @@ function updateUI(d) {
     document.getElementById("panelAlertSummary").textContent = alertSummary;
     updateScenarioPanel(d, riskLevel, alertSummary);
 
+    // 分心驾驶预警覆盖层优先处理，避免与疲劳警告同时展示。
+    updateDistractionOverlay(d);
+
     // 疲劳警告覆盖层
     const overlay = document.getElementById("fatigueOverlay");
-    if (d.is_fatigued) {
+    const phoneOverlay = document.getElementById("phoneAlertOverlay");
+    const hasFatigueAlert = fatigueAlerts.length > 0 || d.is_fatigued;
+    const hasActiveDistractionOverlay = phoneOverlay && phoneOverlay.classList.contains("active");
+    const now = Date.now();
+    if (distractionAlerts.length > 0 || hasActiveDistractionOverlay) {
+        overlay.classList.remove("active");
+        fatigueOverlayUntil = 0;
+    } else if (hasFatigueAlert) {
+        fatigueOverlayUntil = now + alertOverlayHoldMs;
+        overlay.classList.add("active");
+    } else if (now < fatigueOverlayUntil || isSpeechPlaying) {
         overlay.classList.add("active");
     } else {
         overlay.classList.remove("active");
     }
-
-    // 分心驾驶预警覆盖层
-    updateDistractionOverlay(d);
 
     speakAlertByData(d);
 }
@@ -629,6 +738,7 @@ function resetUI() {
     document.getElementById("fatigueOverlay").classList.remove("active");
     document.getElementById("phoneAlertOverlay").classList.remove("active");
     distractionOverlayUntil = 0;
+    fatigueOverlayUntil = 0;
     resetSpeechAlerts();
     renderScenarioEvents();
     updateYoloToggleButton();
