@@ -169,36 +169,12 @@ class FaceDetector:
         results = self._face_mesh.process(rgb_frame)
        # 修改代码以打印所有脸的信息
         if not results.multi_face_landmarks:
-            print("未检测到人脸")
             # 如果没检测到人脸，清空之前的存储信息
             self._previous_landmarks = None
             self._previous_face_center = None
             self._previous_face_size = None
             self._stable_face_counter = 0
             return None
-
-        print(f'检测到人脸数量: {len(results.multi_face_landmarks)}')
-
-        # 打印每个人脸的中心点坐标和距离屏幕中心的距离
-        screen_center = (w / 2, h / 2)
-        for i, face_landmarks in enumerate(results.multi_face_landmarks):
-            # 将归一化坐标转换为像素坐标
-            all_landmarks = [
-                (lm.x * w, lm.y * h) for lm in face_landmarks.landmark
-            ]
-            
-            # 计算人脸中心点
-            xs = [pt[0] for pt in all_landmarks]
-            ys = [pt[1] for pt in all_landmarks]
-            face_center_x = (min(xs) + max(xs)) / 2
-            face_center_y = (min(ys) + max(ys)) / 2
-            face_center = (face_center_x, face_center_y)
-            
-            # 计算到屏幕中心的距离
-            distance_to_center = euclidean(face_center, screen_center)
-            
-            # print(f'人脸 {i+1}: 中心点坐标 ({face_center_x:.2f}, {face_center_y:.2f}), '
-            #     f'距离屏幕中心({screen_center[0]:.2f}, {screen_center[1]:.2f}) {distance_to_center:.2f} 像素')
 
         # 从多个检测到的人脸中选择最可能的
         best_face = None
@@ -256,7 +232,6 @@ class FaceDetector:
             
             min_required_size = min(h, w) * self.min_face_size_ratio
             if face_size < min_required_size:
-                print(f"人脸太小: {face_size:.2f} < {min_required_size:.2f}")
                 return None
             
             # 检查人脸稳定性
