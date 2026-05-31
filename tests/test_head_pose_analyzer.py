@@ -1,5 +1,7 @@
 """HeadPoseAnalyzer 单元测试"""
 
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
@@ -60,43 +62,35 @@ class TestFrameCounter:
     def test_counter_increments_on_head_down(self):
         """低头时计数器应递增"""
         analyzer = HeadPoseAnalyzer(pitch_threshold=0.1, consec_frames=100)
-        # 使用极低阈值，正常姿态也会触发 head_down
+        # 使用极低阈值，若正向 pitch 超过阈值就会触发 head_down。
         points = _make_front_facing_points()
         result = analyzer.estimate_pose(points, (480, 640, 3))
-        # 只要 |pitch| > 0.1 就会递增
         if result.is_head_down:
             assert result.frame_count >= 1
 
     def test_fatigue_after_consec_frames(self):
         """连续低头帧达到阈值时应触发疲劳"""
-        # 先确认正面朝向的 pitch 值，然后用比它更小的阈值
         analyzer = HeadPoseAnalyzer(pitch_threshold=25.0, consec_frames=3)
         points = _make_front_facing_points()
 
-        # 模拟低头：将鼻尖和下巴向下偏移，使 pitch 变大
-        head_down_points = [
-            (320, 280),    # 鼻尖 - 偏下
-            (320, 450),    # 下巴 - 大幅偏下
-            (213, 80),     # 左眼角 - 偏上
-            (427, 80),     # 右眼角 - 偏上
-            (243, 350),    # 左嘴角
-            (397, 350),    # 右嘴角
-        ]
+        with patch.object(HeadPoseAnalyzer, "_rotation_matrix_to_euler", return_value=(30.0, 0.0, 0.0)):
+            for _ in range(3):
+                result = analyzer.estimate_pose(points, (480, 640, 3))
 
-        # 先测一帧获取 pitch
-        test_result = analyzer.estimate_pose(head_down_points, (480, 640, 3))
-        analyzer.reset()
+            assert result.is_head_down
+            assert result.is_fatigued
+            assert result.frame_count == 3
 
-        # 如果 pitch 足够大，用合适的阈值
-        threshold = abs(test_result.pitch) - 1.0 if abs(test_result.pitch) > 1.0 else 0.001
-        analyzer = HeadPoseAnalyzer(pitch_threshold=threshold, consec_frames=3)
+    def test_negative_pitch_does_not_trigger_head_down(self):
+        """负向 pitch 不应被误判为低头"""
+        analyzer = HeadPoseAnalyzer(pitch_threshold=20.0, consec_frames=3)
+        points = _make_front_facing_points()
 
-        for _ in range(3):
-            result = analyzer.estimate_pose(head_down_points, (480, 640, 3))
+        with patch.object(HeadPoseAnalyzer, "_rotation_matrix_to_euler", return_value=(-30.0, 0.0, 0.0)):
+            result = analyzer.estimate_pose(points, (480, 640, 3))
 
-        assert result.is_head_down
-        assert result.is_fatigued
-        assert result.frame_count == 3
+        assert not result.is_head_down
+        assert result.frame_count == 0
 
     def test_counter_resets_on_normal_pose(self):
         """正常姿态时计数器应重置为 0"""

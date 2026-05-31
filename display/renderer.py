@@ -112,10 +112,6 @@ class DisplayRenderer:
         if fatigue_status.mode in ("dl", "hybrid") and dl_result is not None:
             self._draw_dl_confidence(output, dl_result)
 
-        # 疲劳警告
-        if fatigue_status.is_fatigued:
-            self._draw_fatigue_warning(output)
-
         return output
 
     @staticmethod

@@ -71,8 +71,8 @@ class HeadPoseAnalyzer:
         rotation_matrix, _ = cv2.Rodrigues(rotation_vector)
         pitch, yaw, roll = self._rotation_matrix_to_euler(rotation_matrix)
 
-        # 低头判定：|pitch| > threshold
-        is_head_down = abs(pitch) > self.pitch_threshold
+        # 低头只判定正向俯仰，避免抬头或姿态估计反向抖动被误报为低头。
+        is_head_down = pitch > self.pitch_threshold
 
         if is_head_down:
             self._frame_counter += 1

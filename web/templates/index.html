@@ -62,8 +62,8 @@
                     </div>
                     <div class="mode-buttons">
                         <button class="btn btn-mode active" id="modeRule" onclick="switchMode('rule')">规则模式</button>
-                        <button class="btn btn-mode btn-yolo-toggle" id="btnYoloToggle" onclick="toggleYoloMode()">YOLO模式</button>
-                        <button class="btn btn-mode btn-display-toggle" id="btnDisplayToggle" onclick="cycleDisplayMode()">显示：YOLO</button>
+                        <button class="btn btn-mode btn-yolo-toggle enabled" id="btnYoloToggle" onclick="toggleYoloMode()">YOLO模式</button>
+                        <button class="btn btn-mode btn-display-toggle display-both" id="btnDisplayToggle" onclick="cycleDisplayMode()">显示：双模式</button>
                     </div>
                 </div>
 
@@ -77,16 +77,9 @@
                             <div class="placeholder-icon">📷</div>
                             <p>点击「开始检测」启动摄像头</p>
                         </div>
-                        <div class="fatigue-overlay" id="fatigueOverlay">
-                            <div class="fatigue-warning">
-                                <span class="warning-icon">⚠️</span>
-                                <span>疲劳驾驶！请休息！</span>
-                            </div>
-                        </div>
-                        <div class="phone-alert-overlay" id="phoneAlertOverlay">
-                            <div class="fatigue-warning">
-                                <span class="warning-icon">⚠️</span>
-                                <span id="phoneAlertText">分心驾驶警告！请停止危险行为！</span>
+                        <div class="alarm-overlay" id="alarmOverlay" aria-live="assertive" aria-hidden="true">
+                            <div class="alarm-panel" id="alarmPanel">
+                                <div class="alarm-label" id="alarmLabel">疲劳警告</div>
                             </div>
                         </div>
                     </div>
@@ -113,7 +106,7 @@
                 <div class="experiment-sidebar" id="experimentSidebar">
                     <section class="card status-card experiment-span-2" id="statusCard">
                         <div class="panel-heading">
-                            <span class="panel-title">当前状态 / 预警 / 规则提示</span>
+                            <span class="panel-title">当前状态 / 规则提示</span>
                         </div>
                         <div class="status-display" id="statusDisplay">待启动</div>
                         <div class="status-detail" id="statusDetail"></div>
@@ -122,22 +115,13 @@
                                 <span class="summary-label">风险等级</span>
                                 <span class="summary-value" id="panelRiskLevel">低风险</span>
                             </div>
-                            <div class="summary-item">
-                                <span class="summary-label">最近告警摘要</span>
-                                <span class="summary-value" id="panelAlertSummary">暂无告警</span>
-                            </div>
                         </div>
                         <div class="rule-hints" id="ruleHints">
                             <div class="rule-title">规则模式阈值提醒</div>
                             <div class="rule-item" id="ruleEar">👁️ 闭眼：EAR < 0.20（连续25帧）</div>
                             <div class="rule-item" id="ruleMar">👄 哈欠：MAR > 0.40（连续25帧）</div>
-                            <div class="rule-item" id="rulePitch">🧑 低头：|Pitch| > 25.0°（连续25帧）</div>
+                            <div class="rule-item" id="rulePitch">🧑 低头：Pitch > 20.0°（连续25帧）</div>
                             <div class="rule-note">头部姿态由 PnP 算法估计 Pitch / Yaw / Roll</div>
-                        </div>
-                        <div class="critical-log-panel" id="criticalLogPanel">
-                            <div class="critical-log-title">⚠️ 重要日志提醒</div>
-                            <div class="critical-log-item warning" id="criticalWarning">暂无黄色预警</div>
-                            <div class="critical-log-item danger" id="criticalDanger">暂无红色预警</div>
                         </div>
                     </section>
 
@@ -190,7 +174,7 @@
                             </div>
                         </div>
                         <div class="metric-info pose-footer">
-                            <span>阈值: <span id="pitchThreshold">25.0</span>°</span>
+                            <span>阈值: <span id="pitchThreshold">20.0</span>°</span>
                             <span>帧计数: <span id="headFrameCount">0</span></span>
                         </div>
                     </section>
@@ -231,7 +215,7 @@
                                 </div>
                                 <div class="setting-row">
                                     <label>俯仰角阈值</label>
-                                    <input type="number" id="cfgPitch" value="25" step="1" min="10" max="45">
+                                    <input type="number" id="cfgPitch" value="20" step="1" min="10" max="45">
                                 </div>
                                 <div class="setting-row">
                                     <label>闭眼帧数</label>
@@ -277,10 +261,6 @@
                                 <span class="summary-label">摄像头状态</span>
                                 <span class="summary-value" id="scenarioCameraState">未启动</span>
                             </div>
-                            <div class="summary-item">
-                                <span class="summary-label">最近告警摘要</span>
-                                <span class="summary-value" id="scenarioAlertSummary">暂无告警</span>
-                            </div>
                         </div>
                     </section>
 
@@ -304,14 +284,6 @@
                         </div>
                     </section>
 
-                    <section class="card scenario-card">
-                        <div class="panel-heading">
-                            <span class="panel-title">最近告警事件</span>
-                        </div>
-                        <div class="scenario-alert-list" id="scenarioAlertList">
-                            <div class="scenario-alert-empty">暂无关键事件</div>
-                        </div>
-                    </section>
                 </div>
             </aside>
         </main>

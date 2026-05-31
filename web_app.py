@@ -27,14 +27,29 @@ app = Flask(__name__, template_folder="web/templates", static_folder="web/static
 
 PHONE_CENTER = (0.0, 0.0)
 CIGARETTE_CENTER = (0.0, 0.0)
-DRINKING_CENTER = (0.0,0.0)
+CUP_CENTER = (0.0, 0.0)
 EYES_CENTER = (0.0, 0.0)
 MOUTH_CENTER = (0.0, 0.0)
+
+PHONE_LABELS = (
+    "phone", "cell phone", "cellphone", "mobile phone", "mobilephone",
+    "phones", "mobile", "cell", "smartphone", "telephone", "handphone",
+    "calling", "phone call", "phonecall", "手机"
+)
+CIGARETTE_LABELS = (
+    "cigarette", "cigarettes", "cigar", "smoke", "smokes", "smoking",
+    "smoker", "smoking cigarette", "tobacco", "vape", "e cigarette",
+    "e-cigarette", "香烟", "抽烟", "烟", "电子烟"
+)
+CUP_LABELS = (
+    "cup", "water cup", "water_cup", "water-cup", "watercup", "bottle", "water bottle",
+    "drinking", "drink", "水杯", "杯子", "水瓶"
+)
 # 默认阈值
 _DEFAULTS = {
     "ear_threshold": 0.05,
     "mar_threshold": 0.4,
-    "pitch_threshold": 25.0,
+    "pitch_threshold": 20.0,
     "eye_consec_frames": 25,
     "mouth_consec_frames": 25,
     "head_consec_frames": 25,
@@ -66,8 +81,12 @@ class WebDetectionSystem:
         self._last_camera_error = ""
         self._last_yolo_error = ""
         self._yolo_model = None
-        self._yolo_enabled = False
-        self._display_mode = "yolo"
+        self._yolo_enabled = True
+        self._display_mode = "both"
+        self._yolo_interval_sec = 0.15
+        self._last_yolo_infer_at = 0.0
+        self._last_yolo_labels = []
+        self._last_yolo_detections = []
         self._yolo_model_path = os.path.join(
             "dms-driver-monitoring-system", "workdir", "final_model.pt"
         )
@@ -75,16 +94,17 @@ class WebDetectionSystem:
         # DMS 告警阈值（秒）
         self._dms_thresholds = {
             "eye_l1": 0.8,
-            "eye_l2": 1.5,
-            "head_down": 1.0,
+            "eye_l2": 2.0,
+            "head_down": 0.8,
             "yawn": 0.8,
-            "look_away": 0.2,
-            "phone": 0.5,       # 打电话持续时间
-            "smoke": 0.5,        # 抽烟持续时间
+            "look_away": 0.5,
+            "phone": 0.1,       # 打电话持续时间
+            "phone_use": 0.1,   # 玩手机持续时间
+            "smoke": 0.1,        # 抽烟持续时间
             "no_driver": 1.0,
             "occlusion": 0.6,
-            "yaw_abs": 5.0,
-            "drinking": 0.2,  
+            "yaw_abs": 15.0,
+            "drinking": 0.1,
             "phone_eye_dist": 150.0,   # 手机-面部关键点最大有效距离
             "cig_mouth_dist": 200.0,   # 香烟-嘴巴最大有效距离
             "drink_mouth_dist": 200.0, # 喝水-嘴巴最大有效距离
@@ -99,10 +119,18 @@ class WebDetectionSystem:
             "yawn_since": None,
             "look_away_since": None,
             "phone_since": None,
+            "phone_use_since": None,
             "smoke_since": None,
             "no_driver_since": None,
             "occlusion_since": None,
+            "drinking_since": None,
             "last_alert_signature": "",
+        }
+        self._dms_object_hold_sec = 1.0
+        self._dms_object_seen_at = {
+            "phone": 0.0,
+            "smoke": 0.0,
+            "cup": 0.0,
         }
 
         self._prev_state = {"eye_closed": False, "is_yawning": False, "is_head_down": False, "is_fatigued": False, "face_detected": True}
@@ -145,6 +173,8 @@ class WebDetectionSystem:
             try:
                 self._load_yolo_model()
                 self._yolo_enabled = True
+                if self._display_mode == "rule":
+                    self._display_mode = "both"
                 self._last_yolo_error = ""
                 self._add_log("info", f"YOLOv8 已启用: {self._yolo_model_path}")
                 return True, "YOLOv8 已启用"
@@ -155,12 +185,15 @@ class WebDetectionSystem:
                 return False, f"YOLOv8 启用失败: {e}"
 
         self._yolo_enabled = False
+        self._display_mode = "rule"
         self._add_log("info", "YOLOv8 已禁用")
         return True, "YOLOv8 已禁用"
 
     def set_display_mode(self, mode: str):
         allowed = {"yolo", "rule", "both"}
-        self._display_mode = mode if mode in allowed else "yolo"
+        if not self._yolo_enabled and mode != "rule":
+            mode = "rule"
+        self._display_mode = mode if mode in allowed else "both"
         display_names = {
             "yolo": "YOLO显示",
             "rule": "规则显示",
@@ -170,13 +203,77 @@ class WebDetectionSystem:
         return self._display_mode
 
     @staticmethod
-    def _class_present(label_set, *candidates):
-        return any(c in label_set for c in candidates)
+    def _normalize_label(label):
+        return " ".join(
+            str(label or "")
+            .strip()
+            .lower()
+            .replace("_", " ")
+            .replace("-", " ")
+            .split()
+        )
+
+    @classmethod
+    def _label_matches(cls, label, *candidates):
+        normalized = cls._normalize_label(label)
+        if not normalized:
+            return False
+        words = set(normalized.split())
+        for candidate in candidates:
+            candidate_norm = cls._normalize_label(candidate)
+            if not candidate_norm:
+                continue
+            if normalized == candidate_norm:
+                return True
+            if " " in candidate_norm and candidate_norm in normalized:
+                return True
+            if " " not in candidate_norm and candidate_norm in words:
+                return True
+        return False
+
+    @classmethod
+    def _class_present(cls, label_set, *candidates):
+        return any(cls._label_matches(label, *candidates) for label in label_set)
     
     @staticmethod
     def _calc_dist(p1, p2):
         """计算两点欧几里得距离"""
         return math.hypot(p1[0]-p2[0], p1[1]-p2[1])
+
+    def _draw_yolo_detections(self, frame, detections):
+        """把缓存的 YOLO 检测框画到当前帧，避免复用旧帧导致规则层闪烁。"""
+        output = frame.copy()
+        for det in detections:
+            try:
+                x1, y1, x2, y2 = [int(v) for v in det.get("bbox", [])]
+            except (TypeError, ValueError):
+                continue
+            label = str(det.get("label", "object"))
+            conf = det.get("conf")
+            text = f"{label} {conf:.2f}" if isinstance(conf, (int, float)) else label
+
+            cv2.rectangle(output, (x1, y1), (x2, y2), (255, 128, 0), 2)
+            (text_w, text_h), baseline = cv2.getTextSize(
+                text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+            )
+            label_y1 = max(0, y1 - text_h - baseline - 4)
+            cv2.rectangle(
+                output,
+                (x1, label_y1),
+                (x1 + text_w + 6, label_y1 + text_h + baseline + 4),
+                (255, 128, 0),
+                -1,
+            )
+            cv2.putText(
+                output,
+                text,
+                (x1 + 3, label_y1 + text_h + 1),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                2,
+            )
+        return output
 
     def _update_timer(self, key: str, active: bool, now_ts: float):
         since_key = f"{key}_since"
@@ -193,26 +290,33 @@ class WebDetectionSystem:
             return 0.0
         return max(0.0, now_ts - since)
 
+    def _object_recently_active(self, key: str, detected: bool, now_ts: float) -> bool:
+        if detected:
+            self._dms_object_seen_at[key] = now_ts
+            return True
+        last_seen = self._dms_object_seen_at.get(key, 0.0)
+        return last_seen > 0.0 and (now_ts - last_seen) <= self._dms_object_hold_sec
+
     def _build_dms_alerts(self, yolo_labels, eye_result, mouth_result, pose_result, frame=None):
         """按业务规则生成 DMS 预警信息。"""
         now_ts = time.time()
-        label_set = {str(x).strip().lower() for x in yolo_labels}
-        print(f'label_set:{label_set}')
-        # 适配当前模型类别: open eye / closed eye / cigarette / phone / seatbelt
-        phone_detected = self._class_present(label_set, "phone")
-        smoke_detected = self._class_present(label_set, "cigarette")
+        label_set = {self._normalize_label(x) for x in yolo_labels}
+        # 适配当前模型类别: open eye / closed eye / cigarette / phone / seatbelt / cup
+        phone_detected = self._class_present(label_set, *PHONE_LABELS)
+        smoke_detected = self._class_present(label_set, *CIGARETTE_LABELS)
         closed_eye_on = eye_result.is_closed or self._class_present(label_set, "closed eye", "closed_eye")
         open_eye_on = self._class_present(label_set, "open eye", "open_eye")
         seatbelt_on = self._class_present(label_set, "seatbelt", "seat belt")
-        drinking_detected = self._class_present(label_set, "drinking", "drinking")
+        cup_detected = self._class_present(label_set, *CUP_LABELS)
+        phone_detected = self._object_recently_active("phone", phone_detected, now_ts)
+        smoke_detected = self._object_recently_active("smoke", smoke_detected, now_ts)
+        cup_detected = self._object_recently_active("cup", cup_detected, now_ts)
         # 低头/哈欠由现有分析器保证，YOLO 有对应类时可叠加
         yawn_on = mouth_result.is_yawning or self._class_present(label_set, "yawn", "yawning")
         head_down_on = pose_result.is_head_down or self._class_present(label_set, "head down", "head_down")
 
-        # 左顾右盼: 优先 YOLO 类；若无则用 yaw 近似
-        look_away_on = self._class_present(label_set, "look away", "looking_away", "distracted")
-        if not look_away_on:
-            look_away_on = abs(float(getattr(pose_result, "yaw", 0.0))) >= self._dms_thresholds["yaw_abs"]
+        # 左顾右盼只走规则：头部 yaw 偏移超过阈值并持续一段时间。
+        look_away_on = abs(float(getattr(pose_result, "yaw", 0.0))) >= self._dms_thresholds["yaw_abs"]
             
         # 驾驶座无人: 当前模型无该类，使用“既无开眼/闭眼也无安全带”作为保守近似
         no_driver_on = self._class_present(label_set, "no driver", "no_driver", "empty seat", "empty_seat")
@@ -245,20 +349,15 @@ class WebDetectionSystem:
             else:
                 # 若手机稳定出现但人脸关键点暂时不稳，保守视为打电话候选
                 phone_on = True
+        phone_use_on = phone_detected and (not phone_on)
 
-        # 抽烟：检测到香烟 + 香烟与嘴巴距离 < 阈值 + 人脸存在
-        smoke_on = False
-        if smoke_detected and MOUTH_CENTER != (0.0, 0.0) and CIGARETTE_CENTER != (0.0, 0.0):
-            dist = self._calc_dist(CIGARETTE_CENTER, MOUTH_CENTER)
-            # print(f'smoke_dist:{dist}')
-            if dist < self._dms_thresholds["cig_mouth_dist"]:
-                smoke_on = True
+        # 抽烟：YOLO 检测到香烟/烟类目标即触发候选，避免小目标距离估计不稳导致漏报。
+        smoke_on = smoke_detected
         # ======================================================
     
         drinking_on = False
-        if drinking_detected and MOUTH_CENTER != (0.0, 0.0) and DRINKING_CENTER != (0.0, 0.0):
-            dist = self._calc_dist(DRINKING_CENTER, MOUTH_CENTER)
-            print(f'drinking_dist:{dist}')
+        if cup_detected and MOUTH_CENTER != (0.0, 0.0) and CUP_CENTER != (0.0, 0.0):
+            dist = self._calc_dist(CUP_CENTER, MOUTH_CENTER)
             if dist < self._dms_thresholds["drink_mouth_dist"]:
                 drinking_on = True
 
@@ -267,6 +366,7 @@ class WebDetectionSystem:
         self._update_timer("yawn", yawn_on, now_ts)
         self._update_timer("look_away", look_away_on, now_ts)
         self._update_timer("phone", phone_on, now_ts)
+        self._update_timer("phone_use", phone_use_on, now_ts)
         self._update_timer("smoke", smoke_on, now_ts)
         self._update_timer("no_driver", no_driver_on, now_ts)
         self._update_timer("occlusion", occlusion_on, now_ts)
@@ -275,12 +375,12 @@ class WebDetectionSystem:
 
         eye_elapsed = self._elapsed("eye_closed", now_ts)
         if eye_elapsed >= self._dms_thresholds["eye_l2"]:
-            alerts.append("闭眼2级预警（闭眼≥1.5秒）")
+            alerts.append("闭眼2级预警（闭眼≥2.0秒）")
         # elif eye_elapsed >= self._dms_thresholds["eye_l1"]:
         #     alerts.append("闭眼1级预警（闭眼≥0.8秒）")
 
         if self._elapsed("head_down", now_ts) >= self._dms_thresholds["head_down"]:
-            alerts.append("低头预警（低头≥1.0秒）")
+            alerts.append("低头预警（低头≥0.8秒）")
 
         if self._elapsed("yawn", now_ts) >= self._dms_thresholds["yawn"]:
             alerts.append("打哈欠预警（打哈欠≥0.8秒）")
@@ -288,11 +388,14 @@ class WebDetectionSystem:
         if self._elapsed("phone", now_ts) >= self._dms_thresholds["phone"]:
             alerts.append("打电话预警")
 
+        if self._elapsed("phone_use", now_ts) >= self._dms_thresholds["phone_use"]:
+            alerts.append("玩手机预警")
+
         if self._elapsed("smoke", now_ts) >= self._dms_thresholds["smoke"]:
             alerts.append("抽烟预警")
 
         if self._elapsed("look_away", now_ts) >= self._dms_thresholds["look_away"]:
-            alerts.append("左顾右盼预警（视线偏移≥1.0秒）")
+            alerts.append("左顾右盼预警（视线偏移≥0.5秒）")
 
         if self._elapsed("occlusion", now_ts) >= self._dms_thresholds["occlusion"]:
             alerts.append("遮挡镜头预警")
@@ -443,46 +546,70 @@ class WebDetectionSystem:
                     }
 
             rendered = rule_rendered
+            yolo_labels = []
 
             if self._yolo_enabled:
                 try:
-                    yolo_model = self._load_yolo_model()
-                    yolo_results = yolo_model.predict(raw_frame, conf=0.35, verbose=False)
-                    yolo_labels = []
-                    yolo_rendered = raw_frame.copy()
-                    if yolo_results:
-                        result0 = yolo_results[0]
-                        names_map = getattr(result0, "names", {}) or {}
-                        boxes = getattr(result0, "boxes", None)
-                        
-                        if boxes is not None and getattr(boxes, "cls", None) is not None:
-                            # 获取边界框坐标
-                            boxes_xyxy = boxes.xyxy.tolist()
-                            class_ids = boxes.cls.tolist()
-                            
-                            # 重置坐标
-                            global PHONE_CENTER, CIGARETTE_CENTER, DRINKING_CENTER
+                    now_ts = time.time()
+                    should_infer_yolo = (
+                        now_ts - self._last_yolo_infer_at >= self._yolo_interval_sec
+                        or self._last_yolo_infer_at <= 0.0
+                    )
+
+                    yolo_labels = list(self._last_yolo_labels)
+                    yolo_detections = list(self._last_yolo_detections)
+
+                    if should_infer_yolo:
+                        yolo_model = self._load_yolo_model()
+                        yolo_results = yolo_model.predict(
+                            raw_frame, conf=0.35, imgsz=416, max_det=10, verbose=False
+                        )
+                        yolo_labels = []
+                        yolo_detections = []
+                        if yolo_results:
+                            result0 = yolo_results[0]
+                            names_map = getattr(result0, "names", {}) or {}
+                            boxes = getattr(result0, "boxes", None)
+
+                            global PHONE_CENTER, CIGARETTE_CENTER, CUP_CENTER
                             PHONE_CENTER = (0.0, 0.0)
                             CIGARETTE_CENTER = (0.0, 0.0)
-                            DRINKING_CENTER = (0.0, 0.0)
-                            
-                            for i, cls_id in enumerate(class_ids):
-                                cls_name = names_map.get(int(cls_id), str(int(cls_id)))
-                                yolo_labels.append(str(cls_name))
+                            CUP_CENTER = (0.0, 0.0)
 
-                                # 计算中心点坐标
-                                box = boxes_xyxy[i]
-                                center_x = (box[0] + box[2]) / 2
-                                center_y = (box[1] + box[3]) / 2
-                                center_point = (int(center_x), int(center_y))
+                            if boxes is not None and getattr(boxes, "cls", None) is not None:
+                                # 获取边界框坐标
+                                boxes_xyxy = boxes.xyxy.tolist()
+                                class_ids = boxes.cls.tolist()
+                                confs = boxes.conf.tolist() if getattr(boxes, "conf", None) is not None else []
 
-                                if cls_name.lower() == 'phone':
-                                    PHONE_CENTER = center_point
-                                elif cls_name.lower() == 'cigarette':
-                                    CIGARETTE_CENTER = center_point
-                                elif cls_name.lower() == 'drinking':
-                                    DRINKING_CENTER = center_point
-                        yolo_rendered = result0.plot()
+                                for i, cls_id in enumerate(class_ids):
+                                    cls_name = names_map.get(int(cls_id), str(int(cls_id)))
+                                    yolo_labels.append(str(cls_name))
+
+                                    # 计算中心点坐标
+                                    box = boxes_xyxy[i]
+                                    center_x = (box[0] + box[2]) / 2
+                                    center_y = (box[1] + box[3]) / 2
+                                    center_point = (int(center_x), int(center_y))
+                                    conf = float(confs[i]) if i < len(confs) else None
+                                    yolo_detections.append({
+                                        "label": str(cls_name),
+                                        "bbox": [int(v) for v in box],
+                                        "conf": conf,
+                                    })
+
+                                    if self._label_matches(cls_name, *PHONE_LABELS):
+                                        PHONE_CENTER = center_point
+                                    elif self._label_matches(cls_name, *CIGARETTE_LABELS):
+                                        CIGARETTE_CENTER = center_point
+                                    elif self._label_matches(cls_name, *CUP_LABELS):
+                                        CUP_CENTER = center_point
+
+                        self._last_yolo_infer_at = now_ts
+                        self._last_yolo_labels = list(yolo_labels)
+                        self._last_yolo_detections = list(yolo_detections)
+
+                    yolo_rendered = self._draw_yolo_detections(raw_frame, yolo_detections)
 
                     dms_alerts = self._build_dms_alerts(
                         yolo_labels, eye_result, mouth_result, pose_result, frame=raw_frame
@@ -504,14 +631,16 @@ class WebDetectionSystem:
                     self._yolo_enabled = False
                     self._last_yolo_error = str(e)
                     self._add_log("danger", f"YOLO 推理失败，已自动禁用: {e}")
-                    with self._lock:
-                        self._latest_data["dms_alerts"] = []
-                        self._latest_data["is_dms_alert"] = False
             else:
-                with self._lock:
-                    self._latest_data["dms_alerts"] = []
-                    self._latest_data["is_dms_alert"] = False
                 rendered = rule_rendered
+
+            if not self._yolo_enabled:
+                dms_alerts = self._build_dms_alerts(
+                    yolo_labels, eye_result, mouth_result, pose_result, frame=raw_frame
+                )
+                with self._lock:
+                    self._latest_data["dms_alerts"] = dms_alerts
+                    self._latest_data["is_dms_alert"] = len(dms_alerts) > 0
 
             _, jpeg = cv2.imencode(".jpg", rendered, [cv2.IMWRITE_JPEG_QUALITY, 80])
             with self._lock:
@@ -584,7 +713,10 @@ class WebDetectionSystem:
 
     def get_data(self):
         with self._lock:
-            return dict(self._latest_data)
+            data = dict(self._latest_data)
+        data["yolo_enabled"] = self._yolo_enabled
+        data["display_mode"] = self._display_mode
+        return data
 
     def update_config(self, config):
         """动态更新阈值配置。"""

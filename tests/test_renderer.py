@@ -120,17 +120,17 @@ class TestRender:
         # 关键点应被绘制为绿色，帧不应全黑
         assert result.sum() > 0
 
-    def test_render_fatigue_warning_red_pixels(self):
-        """疲劳时应在画面中出现红色像素 (BGR: 0,0,255)。"""
+    def test_render_fatigue_does_not_draw_frame_warning_text(self):
+        """疲劳时不再往视频帧中央绘制红色大字，交给前端弹窗处理。"""
         frame = _make_frame()
         fatigue = FatigueStatus(is_fatigued=True, reasons=["闭眼"], mode="rule")
         result = self.renderer.render(
             frame, None, _default_eye(), _default_mouth(),
             _default_pose(), fatigue,
         )
-        # 检查是否有红色通道值为 255 的像素
-        red_channel = result[:, :, 2]  # BGR 中 R 在索引 2
-        assert red_channel.max() == 255
+        h, w = result.shape[:2]
+        center = result[h // 3 : 2 * h // 3, w // 4 : 3 * w // 4, 2]
+        assert center.max() < 200
 
     def test_render_normal_no_red_warning(self):
         """正常状态不应有大面积红色警告。"""

@@ -331,61 +331,64 @@ body {
 .video-placeholder p { font-size: 15px; }
 .video-placeholder.hidden { display: none; }
 
-.fatigue-overlay {
+.alarm-overlay {
     position: absolute;
     inset: 0;
     display: none;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
-    background: rgba(183, 28, 28, 0.35);
-    z-index: 10;
-}
-
-.fatigue-overlay.active { display: flex; }
-
-.phone-alert-overlay {
-    position: absolute;
-    inset: 0;
-    display: none;
-    align-items: flex-start;
-    justify-content: center;
-    background: rgba(255, 152, 0, 0.12);
-    z-index: 9;
+    padding: clamp(18px, 3vw, 34px);
+    z-index: 8;
     pointer-events: none;
-    padding-top: 34px;
+    background:
+        linear-gradient(180deg, rgba(5, 10, 14, 0.04), rgba(5, 10, 14, 0.72)),
+        rgba(5, 10, 14, 0.08);
 }
 
-.phone-alert-overlay.active { display: flex; }
-
-.fatigue-warning {
-    background: rgba(211, 47, 47, 0.95);
-    color: #fff;
-    padding: 16px 32px;
-    border-radius: 12px;
-    font-size: 24px;
-    font-weight: 700;
-    animation: pulse 1s ease-in-out infinite;
+.alarm-overlay.active {
     display: flex;
-    align-items: center;
-    gap: 10px;
 }
 
-.phone-alert-warning {
-    background: rgba(255, 152, 0, 0.94);
-    color: #fffdf8;
-    padding: 14px 26px;
-    border-radius: 12px;
-    font-size: 22px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28);
+.alarm-panel {
+    width: min(420px, 100%);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    padding: 18px 22px;
+    background: rgba(10, 15, 20, 0.88);
+    box-shadow: 0 22px 48px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(10px);
 }
 
-@keyframes pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.05); opacity: 0.85; }
+.alarm-panel.fatigue {
+    border-color: rgba(239, 83, 80, 0.58);
+    box-shadow:
+        0 22px 48px rgba(0, 0, 0, 0.42),
+        inset 4px 0 0 rgba(239, 83, 80, 0.95);
+}
+
+.alarm-panel.distraction {
+    border-color: rgba(255, 176, 56, 0.62);
+    box-shadow:
+        0 22px 48px rgba(0, 0, 0, 0.42),
+        inset 4px 0 0 rgba(255, 176, 56, 0.95);
+}
+
+.alarm-label {
+    font-size: clamp(28px, 4vw, 44px);
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-align: center;
+    color: #ffb038;
+    writing-mode: horizontal-tb;
+}
+
+.alarm-panel.fatigue .alarm-label {
+    color: #ff8a80;
+}
+
+.alarm-panel.distraction .alarm-label {
+    color: #ffd180;
 }
 
 .controls {
@@ -707,50 +710,6 @@ select {
     color: #607d8b;
 }
 
-.critical-log-panel {
-    margin-top: 10px;
-    text-align: left;
-    background: #111a25;
-    border: 1px solid #3a2a2a;
-    border-radius: 6px;
-    padding: 8px;
-}
-
-.critical-log-title {
-    font-size: 11px;
-    color: #cfd8dc;
-    margin-bottom: 6px;
-}
-
-.critical-log-item {
-    font-size: 12px;
-    line-height: 1.45;
-    margin-bottom: 4px;
-    padding: 4px 6px;
-    border-radius: 4px;
-    background: #0d1117;
-}
-
-.critical-log-item.warning {
-    color: #ffb74d;
-    border-left: 3px solid #ffa726;
-}
-
-.critical-log-item.danger {
-    color: #ef9a9a;
-    border-left: 3px solid #ef5350;
-}
-
-.critical-log-item.flash {
-    animation: criticalFlash 0.6s ease;
-}
-
-@keyframes criticalFlash {
-    0% { box-shadow: 0 0 0 rgba(239, 83, 80, 0); }
-    50% { box-shadow: 0 0 12px rgba(239, 83, 80, 0.45); }
-    100% { box-shadow: 0 0 0 rgba(239, 83, 80, 0); }
-}
-
 .driver-metrics-panel {
     display: flex;
     flex-direction: column;
@@ -1065,33 +1024,6 @@ select {
     margin-top: 12px;
     font-size: 12px;
     color: var(--text-dim);
-}
-
-.scenario-alert-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.scenario-alert-item,
-.scenario-alert-empty {
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: rgba(8, 14, 20, 0.28);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    color: #d7e3ec;
-    font-size: 13px;
-    line-height: 1.45;
-    writing-mode: horizontal-tb;
-    overflow-wrap: anywhere;
-}
-
-.scenario-alert-item.warning {
-    border-left: 3px solid #ffa726;
-}
-
-.scenario-alert-item.danger {
-    border-left: 3px solid #ef5350;
 }
 
 .system-footer {

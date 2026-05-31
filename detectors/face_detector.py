@@ -102,6 +102,14 @@ class FaceDetector:
         
         return np.mean(distances)
 
+    def _remember_face(self, landmarks):
+        """记录当前人脸用于下一帧稳定性比较。"""
+        current_center, current_size = self._calculate_face_center_and_size(landmarks)
+        self._previous_landmarks = landmarks[:]
+        self._previous_face_center = current_center
+        self._previous_face_size = current_size
+        self._stable_face_counter = max(1, self._stable_face_counter)
+
     def _is_face_stable(self, current_landmarks, frame_shape):
         """检查当前人脸是否稳定，防止突然的人脸切换"""
         h, w = frame_shape[:2]
@@ -167,38 +175,13 @@ class FaceDetector:
         rgb_frame.flags.writeable = False
 
         results = self._face_mesh.process(rgb_frame)
-       # 修改代码以打印所有脸的信息
         if not results.multi_face_landmarks:
-            print("未检测到人脸")
             # 如果没检测到人脸，清空之前的存储信息
             self._previous_landmarks = None
             self._previous_face_center = None
             self._previous_face_size = None
             self._stable_face_counter = 0
             return None
-
-        print(f'检测到人脸数量: {len(results.multi_face_landmarks)}')
-
-        # 打印每个人脸的中心点坐标和距离屏幕中心的距离
-        screen_center = (w / 2, h / 2)
-        for i, face_landmarks in enumerate(results.multi_face_landmarks):
-            # 将归一化坐标转换为像素坐标
-            all_landmarks = [
-                (lm.x * w, lm.y * h) for lm in face_landmarks.landmark
-            ]
-            
-            # 计算人脸中心点
-            xs = [pt[0] for pt in all_landmarks]
-            ys = [pt[1] for pt in all_landmarks]
-            face_center_x = (min(xs) + max(xs)) / 2
-            face_center_y = (min(ys) + max(ys)) / 2
-            face_center = (face_center_x, face_center_y)
-            
-            # 计算到屏幕中心的距离
-            distance_to_center = euclidean(face_center, screen_center)
-            
-            # print(f'人脸 {i+1}: 中心点坐标 ({face_center_x:.2f}, {face_center_y:.2f}), '
-            #     f'距离屏幕中心({screen_center[0]:.2f}, {screen_center[1]:.2f}) {distance_to_center:.2f} 像素')
 
         # 从多个检测到的人脸中选择最可能的
         best_face = None
@@ -261,11 +244,8 @@ class FaceDetector:
             
             # 检查人脸稳定性
             if not self._is_face_stable(best_all_landmarks, frame.shape):
-                # 返回之前稳定的人脸信息，如果没有则返回None
-                if self._stable_face_counter >= self._max_stable_face_counter:
-                    # 如果之前已经稳定了一段时间，继续使用之前的信息
-                    pass
-                return None
+                # 只把稳定性异常用于更新跟踪状态，不再丢弃当前帧，避免规则层闪烁。
+                self._remember_face(best_all_landmarks)
 
         face = best_face
 
